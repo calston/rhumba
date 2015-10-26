@@ -1,4 +1,5 @@
 import time
+import exceptions
 import json
 import traceback
 import yaml
@@ -16,7 +17,7 @@ class RhumbaQueue(object):
         self.config = config
         self.service = svc
 
-        self.id = config['id']
+        self.name = config['name']
         self.expire = int(config.get('expire', 3600))
         self.plugin = self.loadPlugin(config['plugin'])
 
@@ -31,11 +32,15 @@ class RhumbaQueue(object):
         self.t = task.LoopingCall(self.queueRun)
 
     def loadPlugin(self, plugin):
-        return getattr(importlib.import_module(plugin), 'Plugin')(self.config)
+        try:
+            return getattr(importlib.import_module(plugin), 'Plugin')(self.config)
+        except exceptions.ImportError:
+            log.msg("Error importing plugin %s" % plugin)
+            return None
         
     @defer.inlineCallbacks
     def grabQueue(self):
-        item = yield self.service.client.rpop("rhumba.q%s" % self.id)
+        item = yield self.service.client.rpop("rhumba.q.%s" % self.name)
         if item:
             defer.returnValue(json.loads(item))
         else:
@@ -56,7 +61,7 @@ class RhumbaQueue(object):
                     'time': time.time()
                 }
 
-                yield self.service.client.set('rhumba.q%s.%s' % (self.id, uid),
+                yield self.service.client.set('rhumba.q.%s.%s' % (self.name, uid),
                     json.dumps(d), expire=self.expire)
 
             except Exception, e:
@@ -65,7 +70,7 @@ class RhumbaQueue(object):
 
     @defer.inlineCallbacks
     def reQueue(self, request):
-        response = yield self.service.client.lpush("rhumba.q%s" % self.id)
+        response = yield self.service.client.lpush("rhumba.q.%s" % self.name)
 
     def processItem(self, message, params):
         fn = getattr(self.plugin, 'call_%s' % message)
@@ -147,11 +152,20 @@ class RhumbaService(service.Service):
         clientCreator = protocol.ClientCreator(reactor, RedisClient)
         self.client = yield clientCreator.connectTCP(
             self.redis_host, self.redis_port)
-
+        
+        log.msg('Starting Rhumba')
+    
         reactor.callWhenRunning(self.startBeat)
         self.setupQueues()
+        queues = 0
         for k, v in self.queues.items():
-            reactor.callWhenRunning(v.startQueue)
+            if v.plugin:
+                queues += 1
+                log.msg('Starting queue %s: plugin=%s' % (k, v.plugin))
+                reactor.callWhenRunning(v.startQueue)
+
+        if queues < 1:
+            log.msg('No queues are running')
 
 def makeService(config):
     return RhumbaService(config)

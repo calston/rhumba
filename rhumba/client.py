@@ -15,7 +15,7 @@ class RhumbaClient(object):
     def _get_client(self):
         return redis.StrictRedis(host=self.host, port=self.port, db=self.db)
 
-    def queue(self, message, params={}, queue=0):
+    def queue(self, queue, message, params={}):
         """
         Queue a job in Rhumba
         """
@@ -26,16 +26,16 @@ class RhumbaClient(object):
             'params': params
         }
 
-        self._get_client().lpush('rhumba.q%s' % queue, json.dumps(d))
+        self._get_client().lpush('rhumba.q.%s' % queue, json.dumps(d))
         print 'queued'
         return d['id']
 
-    def getResult(self, id):
+    def getResult(self, queue, uid):
         """
         Retrieve the result of a job from its ID
         """
         return json.loads(
-            self._get_client().get('rhumba.r.%s' % id)
+            self._get_client().get('rhumba.q.%s.%s' % (queue, uid))
         )
 
     def clusterStatus(self):
