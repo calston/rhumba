@@ -28,6 +28,6 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX',
         'Programming Language :: Python',
-        'Topic :: System :: Deployment',
+        'Topic :: System :: Distributed Computing',
     ],
 )

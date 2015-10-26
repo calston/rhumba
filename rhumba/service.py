@@ -29,7 +29,7 @@ class RhumbaQueue(object):
         self.jobs = 0
         self.cycl = 0
 
-        self.t = task.LoopingCall(self.queueRun)
+        self.t = task.LoopingCall(self.tick)
 
     def loadPlugin(self, plugin):
         try:
@@ -99,6 +99,9 @@ class RhumbaQueue(object):
             yield self.service.setStatus("ready")
 
         defer.returnValue(None)
+
+    def tick(self):
+        reactor.callLater(self.fast_inter, self.queueRun)
 
     def startQueue(self):
         """Starts the timer for this queue"""

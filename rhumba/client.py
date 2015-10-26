@@ -27,16 +27,18 @@ class RhumbaClient(object):
         }
 
         self._get_client().lpush('rhumba.q.%s' % queue, json.dumps(d))
-        print 'queued'
         return d['id']
 
     def getResult(self, queue, uid):
         """
         Retrieve the result of a job from its ID
         """
-        return json.loads(
-            self._get_client().get('rhumba.q.%s.%s' % (queue, uid))
-        )
+        r = self._get_client().get('rhumba.q.%s.%s' % (queue, uid))
+
+        if r:
+            return json.loads(r)
+        else:
+            return None
 
     def clusterStatus(self):
         """
