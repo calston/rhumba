@@ -12,6 +12,8 @@ from twisted.python import log
 
 from txredis.client import RedisClient, RedisSubscriber
 
+from rhumba import Cronable
+
 class RhumbaQueue(object):
     def __init__(self, config, svc):
         self.config = config
@@ -77,7 +79,6 @@ class RhumbaQueue(object):
 
         return defer.maybeDeferred(fn, params)
 
-
     @defer.inlineCallbacks
     def queueRun(self):
         if self.cycl > 0:
@@ -132,10 +133,30 @@ class RhumbaService(service.Service):
         
         self.queues = {}
 
-        self.t = task.LoopingCall(self.heartbeat)
+        self.crons = {}
 
+        self.t = task.LoopingCall(self.heartbeat)
+    
+    @defer.inlineCallbacks
     def heartbeat(self):
-        return self.client.set(
+        now = int(time.time())
+
+        for queue, crons in self.crons.items():
+            runner = yield self.checkCronRunners(queue)
+
+            if not runner:
+                yield self.registerCronRunner(queue)
+                runner = self.hostname
+
+            if runner == self.hostname:
+                for cron in crons:
+                    lastRun = yield self.lastRun(queue, cron.name)
+
+                    if not lastRun or (now - lastRun > cron.time):
+                        plug = self.queues[queue].plugin
+                        reactor.callLater(0, cron.fn, plug)
+                
+        yield self.client.set(
             "rhumba.server.%s.heartbeat" % self.hostname, time.time(), expire=self.expire)
 
     def setStatus(self, status):
@@ -144,6 +165,19 @@ class RhumbaService(service.Service):
 
     def startBeat(self):
         self.td = self.t.start(1.0)
+
+    def lastRun(self, queue, fn):
+        return self.client.get("rhumba.crons.%s.%s" % (queue, fn))
+
+    def setLastRun(self, queue, fn):
+        now = int(time.time())
+        return self.client.set("rhumba.crons.%s.%s" % (queue, fn), now)
+
+    def registerCronRunner(self, queue):
+        return self.client.set("rhumba.crons.%s" % queue, self.hostname, expire=60)
+
+    def checkCronRunners(self, queue):
+        return self.client.get("rhumba.crons.%s" % queue)
 
     def setupQueues(self):
         queues = self.config.get('queues', [])
@@ -163,6 +197,9 @@ class RhumbaService(service.Service):
         queues = 0
         for k, v in self.queues.items():
             if v.plugin:
+                crons = [getattr(v.plugin, i) for i in dir(v.plugin) if isinstance(getattr(v.plugin, i), Cronable)]
+                if crons:
+                    self.crons[k] = crons
                 queues += 1
                 log.msg('Starting queue %s: plugin=%s' % (k, v.plugin))
                 reactor.callWhenRunning(v.startQueue)

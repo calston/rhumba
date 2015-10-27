@@ -1,5 +1,5 @@
 from twisted.internet import defer, reactor
-from rhumba import RhumbaPlugin
+from rhumba import RhumbaPlugin, cron
 
 def sleep(secs):
     d = defer.Deferred()
@@ -13,3 +13,8 @@ class Plugin(RhumbaPlugin):
         yield sleep(2)
 
         defer.returnValue(None)
+
+    @cron(1)
+    def cron_test(self):
+        self.log("tick!")
+
