@@ -6,4 +6,4 @@ install:
 services:
     - redis-server
 script:
-    - trial tensor
+    - trial rhumba
