@@ -1,4 +1,5 @@
 import time
+import uuid
 import exceptions
 import json
 import traceback
@@ -12,7 +13,6 @@ from twisted.python import log
 
 from txredis.client import RedisClient, RedisSubscriber
 
-from rhumba import Cronable
 
 class RhumbaQueue(object):
     def __init__(self, config, svc):
@@ -124,6 +124,8 @@ class RhumbaService(service.Service):
         except:
             self.config = {}
 
+        self.uuid = uuid.uuid1().get_hex()
+
         self.hostname = socket.gethostbyaddr(socket.gethostname())[0]
 
         self.redis_host = self.config.get('redis_host', 'localhost')
@@ -146,16 +148,30 @@ class RhumbaService(service.Service):
 
             if not runner:
                 yield self.registerCronRunner(queue)
-                runner = self.hostname
+                runner = self.uuid
 
-            if runner == self.hostname:
+            if runner == self.uuid:
                 for cron in crons:
                     lastRun = yield self.lastRun(queue, cron.name)
 
+                    if lastRun:
+                        lastRun = int(lastRun)
+
                     if not lastRun or (now - lastRun > cron.time):
                         plug = self.queues[queue].plugin
-                        reactor.callLater(0, cron.fn, plug)
-                
+                        yield self.setLastRun(queue, cron.name)
+                        d = {
+                            'id': uuid.uuid1().get_hex(),
+                            'version': 1,
+                            'message': cron.name.split('call_', 1)[-1],
+                            'params': {}
+                        }
+
+                        # Queue this job
+                        log.msg('Queing %s scheduled job %s' % (queue, repr(d)))
+                        yield self.client.lpush(
+                            'rhumba.q.%s' % queue, json.dumps(d))
+
         yield self.client.set(
             "rhumba.server.%s.heartbeat" % self.hostname, time.time(), expire=self.expire)
 
@@ -170,11 +186,14 @@ class RhumbaService(service.Service):
         return self.client.get("rhumba.crons.%s.%s" % (queue, fn))
 
     def setLastRun(self, queue, fn):
-        now = int(time.time())
+        now = str(int(time.time()))
         return self.client.set("rhumba.crons.%s.%s" % (queue, fn), now)
 
     def registerCronRunner(self, queue):
-        return self.client.set("rhumba.crons.%s" % queue, self.hostname, expire=60)
+        return self.client.set("rhumba.crons.%s" % queue, self.uuid, expire=60)
+
+    def deregisterCronRunner(self, queue):
+        return self.client.delete("rhumba.crons.%s" % queue)
 
     def checkCronRunners(self, queue):
         return self.client.get("rhumba.crons.%s" % queue)
@@ -197,9 +216,15 @@ class RhumbaService(service.Service):
         queues = 0
         for k, v in self.queues.items():
             if v.plugin:
-                crons = [getattr(v.plugin, i) for i in dir(v.plugin) if isinstance(getattr(v.plugin, i), Cronable)]
+                # Find all methods decorated with @cron
+                crons = [
+                    getattr(v.plugin, i).cronable for i in dir(v.plugin)
+                    if hasattr(getattr(v.plugin, i), 'cronable')
+                ]
+
                 if crons:
                     self.crons[k] = crons
+
                 queues += 1
                 log.msg('Starting queue %s: plugin=%s' % (k, v.plugin))
                 reactor.callWhenRunning(v.startQueue)

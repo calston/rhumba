@@ -15,6 +15,6 @@ class Plugin(RhumbaPlugin):
         defer.returnValue(None)
 
     @cron(1)
-    def cron_test(self):
+    def call_crontest(self, args):
         self.log("tick!")
 
