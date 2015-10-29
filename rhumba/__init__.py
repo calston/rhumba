@@ -1,5 +1,5 @@
-from rhumba import plugin, cron
+from rhumba import plugin, crontab
 
-cron = cron.cron
+cron = crontab.cron
 
 RhumbaPlugin = plugin.RhumbaPlugin
