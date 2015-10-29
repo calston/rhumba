@@ -120,3 +120,16 @@ class Tests(unittest.TestCase):
         result = yield self._wait_for('testqueue', uuid2)
         
         self.assertEquals(result['result'], None)
+
+    @defer.inlineCallbacks
+    def test_cron(self):
+        queue = self.service.queues['testqueue']
+
+        yield self.service.checkCrons()
+
+        self.assertIn('rhumba.crons.testqueue.call_crontest', self.client.kv)
+
+        q = yield queue.grabQueue()
+
+        self.assertEquals(q['message'], 'crontest')
+

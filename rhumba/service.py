@@ -138,9 +138,9 @@ class RhumbaService(service.Service):
         self.crons = {}
 
         self.t = task.LoopingCall(self.heartbeat)
-    
+
     @defer.inlineCallbacks
-    def heartbeat(self):
+    def checkCrons(self):
         now = int(time.time())
 
         for queue, crons in self.crons.items():
@@ -171,6 +171,11 @@ class RhumbaService(service.Service):
                         log.msg('Queing %s scheduled job %s' % (queue, repr(d)))
                         yield self.client.lpush(
                             'rhumba.q.%s' % queue, json.dumps(d))
+   
+    @defer.inlineCallbacks
+    def heartbeat(self):
+
+        yield self.checkCrons()
 
         yield self.client.set(
             "rhumba.server.%s.heartbeat" % self.hostname, time.time(), expire=self.expire)
@@ -201,7 +206,19 @@ class RhumbaService(service.Service):
     def setupQueues(self):
         queues = self.config.get('queues', [])
         for queue in queues:
-            self.queues[queue['name']] = RhumbaQueue(queue, self)
+            q = RhumbaQueue(queue, self)
+            qname = queue['name']
+            self.queues[qname] = q
+
+            if q.plugin:
+                # Find all methods decorated with @cron
+                crons = [
+                    getattr(q.plugin, i).cronable for i in dir(q.plugin)
+                    if hasattr(getattr(q.plugin, i), 'cronable')
+                ]
+
+                if crons:
+                    self.crons[qname] = crons
 
     @defer.inlineCallbacks
     def startService(self):
@@ -216,15 +233,6 @@ class RhumbaService(service.Service):
         queues = 0
         for k, v in self.queues.items():
             if v.plugin:
-                # Find all methods decorated with @cron
-                crons = [
-                    getattr(v.plugin, i).cronable for i in dir(v.plugin)
-                    if hasattr(getattr(v.plugin, i), 'cronable')
-                ]
-
-                if crons:
-                    self.crons[k] = crons
-
                 queues += 1
                 log.msg('Starting queue %s: plugin=%s' % (k, v.plugin))
                 reactor.callWhenRunning(v.startQueue)
