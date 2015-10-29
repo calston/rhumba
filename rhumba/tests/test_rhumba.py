@@ -1,4 +1,6 @@
-import yaml 
+import yaml
+import json
+import datetime
 
 from twisted.trial import unittest
 
@@ -58,7 +60,7 @@ class AsyncWrapper(object):
         return defer.maybeDeferred(self.c.get, *a)
 
 
-class Tests(unittest.TestCase):
+class RhumbaTest(unittest.TestCase):
     def setUp(self):
         self.service = service.RhumbaService(yaml.dump(test_config))
         self.client = FakeRedis()
@@ -68,6 +70,7 @@ class Tests(unittest.TestCase):
         self.c = client.RhumbaClient()
         self.c._get_client = lambda : self.client
 
+class TestService(RhumbaTest):
     @defer.inlineCallbacks
     def test_heartbeat(self):
         yield self.service.heartbeat()
@@ -121,15 +124,121 @@ class Tests(unittest.TestCase):
         
         self.assertEquals(result['result'], None)
 
+
+    def setUp(self):
+        self.service = service.RhumbaService(yaml.dump(test_config))
+        self.client = FakeRedis()
+        self.service.setupQueues()
+        self.service.client = AsyncWrapper(self.client)
+
+        self.c = client.RhumbaClient()
+        self.c._get_client = lambda : self.client
+
+
+class TestCron(RhumbaTest):
+    def _messages(self):
+        """ Retrieve a list of only messages in the queue """
+        q = [json.loads(i)['message'] for i in self.client.kv.get(
+            'rhumba.q.testqueue', [])]
+        return q
+
+    def _flush(self):
+        self.client.kv['rhumba.q.testqueue'] = []
+
     @defer.inlineCallbacks
     def test_cron(self):
         queue = self.service.queues['testqueue']
 
-        yield self.service.checkCrons()
+        yield self.service.checkCrons(datetime.datetime.now())
 
-        self.assertIn('rhumba.crons.testqueue.call_crontest', self.client.kv)
+        self.assertIn('rhumba.crons.testqueue.call_everysecond', self.client.kv)
 
-        q = yield queue.grabQueue()
+        self.assertIn('everysecond', self._messages())
 
-        self.assertEquals(q['message'], 'crontest')
+    @defer.inlineCallbacks
+    def test_cron_repeat(self):
+        queue = self.service.queues['testqueue']
+
+        yield self.service.checkCrons(datetime.datetime.now())
+
+        q = self._messages()
+
+        self.assertIn('everysecond', q)
+
+    @defer.inlineCallbacks
+    def test_cron_backwards_clock(self):
+        queue = self.service.queues['testqueue']
+        # Clock goes backwards
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 5, 3, 0))
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 2, 3, 5, 3, 2))
+        self.assertNotIn('everytwentythsecond', self._messages())
+
+        yield self.service.checkCrons(datetime.datetime(2015, 1, 3, 5, 3, 20))
+        self.assertIn('everytwentythsecond', self._messages())
+
+
+    @defer.inlineCallbacks
+    def test_cron_seconds(self):
+        queue = self.service.queues['testqueue']
+
+        now = datetime.datetime(2015, 3, 3, 4, 1, 1)
+
+        yield self.service.checkCrons(now)
+
+        self.assertNotIn('everytwentythsecond', self._messages())
+
+        self._flush()
+
+        # 20 second mark
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 4, 1, 20))
+
+        self.assertIn('everytwentythsecond', self._messages())
+        self._flush()
+        
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 4, 1, 21))
+        self.assertNotIn('everytwentythsecond', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 4, 1, 32))
+        self.assertNotIn('everytwentythsecond', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 4, 3, 20))
+        self.assertIn('everytwentythsecond', self._messages())
+
+    @defer.inlineCallbacks
+    def test_cron_mins(self):
+        queue = self.service.queues['testqueue']
+
+        yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 4, 2, 1))
+
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 4, 5, 1))
+
+        self.assertNotIn('everytenminutes', self._messages())
+
+        yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 4, 12, 1))
+
+        self.assertIn('everytenminutes', self._messages())
+
+    @defer.inlineCallbacks
+    def test_cron_hour(self):
+        queue = self.service.queues['testqueue']
+
+        yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 10, 2, 1))
+
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 11, 2, 2))
+
+        self.assertIn('everyhour', self._messages())
+        self.assertNotIn('atlunch', self._messages())
+
+        yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 12, 12, 1))
+
+        self.assertIn('everyhour', self._messages())
+        self.assertIn('atlunch', self._messages())
 

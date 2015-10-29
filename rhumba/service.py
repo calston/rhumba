@@ -6,6 +6,7 @@ import traceback
 import yaml
 import socket
 import importlib
+import datetime
 
 from twisted.application import service
 from twisted.internet import task, reactor, protocol, defer
@@ -140,8 +141,7 @@ class RhumbaService(service.Service):
         self.t = task.LoopingCall(self.heartbeat)
 
     @defer.inlineCallbacks
-    def checkCrons(self):
-        now = int(time.time())
+    def checkCrons(self, now):
 
         for queue, crons in self.crons.items():
             runner = yield self.checkCronRunners(queue)
@@ -157,9 +157,9 @@ class RhumbaService(service.Service):
                     if lastRun:
                         lastRun = int(lastRun)
 
-                    if not lastRun or (now - lastRun > cron.time):
+                    if cron.checkCron(lastRun, now):
                         plug = self.queues[queue].plugin
-                        yield self.setLastRun(queue, cron.name)
+                        yield self.setLastRun(queue, cron.name, now)
                         d = {
                             'id': uuid.uuid1().get_hex(),
                             'version': 1,
@@ -175,7 +175,7 @@ class RhumbaService(service.Service):
     @defer.inlineCallbacks
     def heartbeat(self):
 
-        yield self.checkCrons()
+        yield self.checkCrons(datetime.datetime.now())
 
         yield self.client.set(
             "rhumba.server.%s.heartbeat" % self.hostname, time.time(), expire=self.expire)
@@ -190,8 +190,8 @@ class RhumbaService(service.Service):
     def lastRun(self, queue, fn):
         return self.client.get("rhumba.crons.%s.%s" % (queue, fn))
 
-    def setLastRun(self, queue, fn):
-        now = str(int(time.time()))
+    def setLastRun(self, queue, fn, now):
+        now = time.mktime(now.timetuple())
         return self.client.set("rhumba.crons.%s.%s" % (queue, fn), now)
 
     def registerCronRunner(self, queue):
