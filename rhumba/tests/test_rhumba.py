@@ -263,16 +263,33 @@ class TestCron(RhumbaTest):
         yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 10, 2, 1))
         self._flush()
 
-        yield self.service.checkCrons(datetime.datetime(2015, 10, 6, 10, 0, 0))
+        yield self.service.checkCrons(datetime.datetime(2015, 10, 6, 10, 30, 0))
         self.assertIn('everyhour', self._messages())
         self._flush()
 
-        yield self.service.checkCrons(datetime.datetime(2015, 10, 6, 12, 12, 1))
+        yield self.service.checkCrons(datetime.datetime(2015, 10, 6, 12, 32, 1))
         self.assertIn('everytwohoursontuesday', self._messages())
         self._flush()
 
-        yield self.service.checkCrons(datetime.datetime(2015, 10, 7, 12, 12, 1))
+        yield self.service.checkCrons(datetime.datetime(2015, 10, 6, 12, 33, 1))
         self.assertNotIn('everytwohoursontuesday', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 10, 6, 14, 34, 1))
+        self.assertIn('everytwohoursontuesday', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 10, 6, 14, 30, 20))
+        self.assertNotIn('everytwohoursontuesday', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 10, 7, 14, 12, 1))
+        self.assertNotIn('everytwohoursontuesday', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 10, 7, 14, 30, 1))
+        self.assertNotIn('everytwohoursontuesday', self._messages())
+        self._flush()
 
     @defer.inlineCallbacks
     def test_cron_month(self):

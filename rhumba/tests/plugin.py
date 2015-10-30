@@ -64,3 +64,9 @@ class Plugin(RhumbaPlugin):
         self.log("Test cron %s" % repr(args))
         yield sleep(args.get('delay', 1))
         defer.returnValue(None)
+
+    @cron(min='30', hour='*/2', weekday=crontab.Tuesday, month='*/2')
+    def call_every2hoursontuesdayevery2months(self, args):
+        self.log("Test cron %s" % repr(args))
+        yield sleep(args.get('delay', 1))
+        defer.returnValue(None)
