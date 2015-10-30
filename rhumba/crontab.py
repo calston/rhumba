@@ -19,51 +19,80 @@ class Cronable(object):
         self.month = month
         self.weekday = weekday
 
-    def _checkEvery(self, t, n, total, wrap=59, exact=True):
+    def _checkEvery(self, t, n, total, wrap=59, exact=True, repeat=False):
         if not t:
-            return False
+            return False, False
         tseg = t
 
         if isinstance(t, str):
             if t[:2] == '*/':
                 tseg = int(t[2:])
                 if total >= tseg:
-                    return True
-                return False
+                    return True, True
+                return True, False
             else:
                 tseg = int(t)
        
         if exact:
-            if (tseg == n) and (total >= wrap):
-                return True
+            if (tseg == n) and ((total >= wrap) or repeat):
+                return False, True
         else:
-            if (n >= tseg) and (total >= wrap):
-                return True
+            if (n >= tseg) and ((total >= wrap) or repeat):
+                return False, True
 
-        return False
+        return False, False
 
-    def _checkSecs(self, now, delta):
+    def _checkSecs(self, now, delta, repeat=False):
         total_secs = delta.total_seconds()
 
-        return self._checkEvery(self.secs, now.second, total_secs, exact=False)
+        return self._checkEvery(
+            self.secs, now.second, total_secs, exact=False, repeat=repeat)
 
-    def _checkMins(self, now, delta):
+    def _checkMins(self, now, delta, repeat=False):
         total_mins = delta.total_seconds() / 60
 
-        return self._checkEvery(self.min, now.minute, total_mins, exact=False)
+        return self._checkEvery(
+            self.min, now.minute, total_mins, exact=False, repeat=repeat)
 
-    def _checkHours(self, now, delta):
+    def _checkHours(self, now, delta, repeat=False):
         total_hours = delta.total_seconds() / (60*60)
 
-        return self._checkEvery(self.hour, now.hour, total_hours, wrap=23)
+        return self._checkEvery(
+            self.hour, now.hour, total_hours, wrap=23, repeat=repeat)
     
-    def _checkDays(self, now, delta):
+    def _checkDays(self, now, delta, repeat=False):
         total_days = delta.total_seconds() / (60*60*24)
 
         # Get the max days in this month
         start, end = calendar.monthrange(now.year, now.month)
 
-        return self._checkEvery(self.day, now.day, total_days, wrap=end-1)
+        return self._checkEvery(
+            self.day, now.day, total_days, wrap=end, repeat=repeat)
+
+    def _checkMonth(self, now, delta, repeat=False):
+        # Get the max days in this month
+        if now.month == 1:
+            lastm = 12
+            year = now.year - 1
+        else:
+            lastm = now.month - 1
+            year = now.year
+
+        start, end = calendar.monthrange(year, lastm)
+
+        total_days = delta.total_seconds() / (60*60*24*end)
+
+        return self._checkEvery(self.month, now.month, total_days, wrap=12,
+            exact=True, repeat=repeat)
+
+    def _checkWeekday(self, now, delta, repeat=False):
+        if isinstance(self.weekday, str):
+            self.weekday = int(self.weekday)
+
+        if (self.weekday == now.isoweekday()) and ((delta.days > 7) or repeat):
+            return False, True
+        else:
+            return False, False
 
     def checkCron(self, last, now):
         assert(isinstance(now, datetime.datetime))
@@ -75,25 +104,24 @@ class Cronable(object):
         delta = now - last_date
 
         run = False
-        
 
         chk = [
-            (self.secs, self._checkSecs(now, delta)),
-            (self.min, self._checkMins(now, delta)),
-            (self.hour, self._checkHours(now, delta)),
-            (self.day, self._checkDays(now, delta))
+            (self.secs, self._checkSecs),
+            (self.min, self._checkMins),
+            (self.hour, self._checkHours),
+            (self.weekday, self._checkWeekday),
+            (self.day, self._checkDays),
+            (self.month, self._checkMonth),
         ]
+
+        every = False
 
         for a, b in chk:
             if a:
-                run = b
-
-        if self.weekday == now.isoweekday():
-            if delta.days > 7:
-                run = True
+                e, run = b(now, delta, repeat=every)
+                every = (run and e) or every
 
         return run
-
             
 
 def cron(secs=None, min=None, hour=None, day=None, month=None, weekday=None):

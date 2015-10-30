@@ -35,8 +35,20 @@ class Plugin(RhumbaPlugin):
         yield sleep(args.get('delay', 1))
         defer.returnValue(None)
 
+    @cron(min='*/10', hour=14)
+    def call_everytenminutesat2pm(self, args):
+        self.log("Test cron %s" % repr(args))
+        yield sleep(args.get('delay', 1))
+        defer.returnValue(None)
+
     @cron(hour='*/1')
     def call_everyhour(self, args):
+        self.log("Test cron %s" % repr(args))
+        yield sleep(args.get('delay', 1))
+        defer.returnValue(None)
+
+    @cron(month=12)
+    def call_december(self, args):
         self.log("Test cron %s" % repr(args))
         yield sleep(args.get('delay', 1))
         defer.returnValue(None)
