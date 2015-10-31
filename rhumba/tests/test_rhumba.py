@@ -70,7 +70,26 @@ class RhumbaTest(unittest.TestCase):
         self.c = client.RhumbaClient()
         self.c._get_client = lambda : self.client
 
+
+class TestClient(client.AsyncRhumbaClient):
+    def __init__(self, client, *a, **kw):
+        self.client = client
+
+    def connect(self):
+        pass
+
 class TestService(RhumbaTest):
+
+    @defer.inlineCallbacks
+    def test_async_client(self):
+        client = TestClient(self.service.client)
+
+        yield client.queue('testqueue', 'test')
+        
+        message = self.service.client.c.kv['rhumba.q.testqueue'][0]
+
+        self.assertIn('test', message)
+
     @defer.inlineCallbacks
     def test_heartbeat(self):
         yield self.service.heartbeat()

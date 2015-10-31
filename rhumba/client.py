@@ -3,6 +3,8 @@ import time
 import json
 import uuid
 
+from twisted.internet import reactor, defer
+
 from txredis.client import RedisClient
 
 class AsyncRhumbaClient(object):
@@ -71,7 +73,7 @@ class AsyncRhumbaClient(object):
             if not last:
                 last = 0
 
-            status = yield self.client..get('rhumba.server.%s.status' % sname)
+            status = yield self.client.get('rhumba.server.%s.status' % sname)
 
             if (status == 'ready') and (now - last > 5):
                 status = 'offline'
