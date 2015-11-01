@@ -37,8 +37,8 @@ class RhumbaQueue(object):
     def loadPlugin(self, plugin):
         try:
             return getattr(importlib.import_module(plugin), 'Plugin')(self.config)
-        except exceptions.ImportError:
-            log.msg("Error importing plugin %s" % plugin)
+        except exceptions.ImportError, e:
+            log.msg("Error importing plugin %s : %s" % (plugin, repr(e)))
             return None
         
     @defer.inlineCallbacks
