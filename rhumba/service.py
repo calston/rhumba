@@ -138,7 +138,6 @@ class RhumbaService(service.Service):
 
     @defer.inlineCallbacks
     def checkCrons(self, now):
-
         for queue, crons in self.crons.items():
             runner = yield self.checkCronRunners(queue)
 
@@ -149,9 +148,6 @@ class RhumbaService(service.Service):
             if runner == self.uuid:
                 for cron in crons:
                     lastRun = yield self.lastRun(queue, cron.name)
-
-                    if lastRun:
-                        lastRun = int(lastRun)
 
                     if cron.checkCron(lastRun, now):
                         plug = self.queues[queue].plugin
