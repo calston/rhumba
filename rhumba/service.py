@@ -56,20 +56,16 @@ class RhumbaQueue(object):
             uid = item['id']
             yield self.service.setStatus("processing:%s:%s:%s" % (
                 m, uid, time.time()))
-            try:
-                result = yield self.processItem(m, item.get('params', {}))
 
-                d = {
-                    'result': result,
-                    'time': time.time()
-                }
+            result = yield self.processItem(m, item.get('params', {}))
 
-                yield self.service.client.set('rhumba.q.%s.%s' % (self.name, uid),
-                    json.dumps(d), expire=self.expire)
+            d = {
+                'result': result,
+                'time': time.time()
+            }
 
-            except Exception, e:
-                log.msg('Error %s' % e)
-                log.msg(traceback.format_exc())
+            yield self.service.client.set('rhumba.q.%s.%s' % (self.name, uid),
+                json.dumps(d), expire=self.expire)
 
     @defer.inlineCallbacks
     def reQueue(self, request):
