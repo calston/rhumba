@@ -168,9 +168,22 @@ class TestCron(RhumbaTest):
     def test_cron(self):
         queue = self.service.queues['testqueue']
 
-        yield self.service.checkCrons(datetime.datetime.now())
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 5, 3, 0))
         self.assertIn('rhumba.crons.testqueue.call_everysecond', self.client.kv)
         self.assertIn('everysecond', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 5, 3, 1))
+        self.assertIn('everysecond', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 5, 3, 2))
+        self.assertIn('everysecond', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 3, 3, 5, 3, 4))
+        self.assertIn('everysecond', self._messages())
+        self._flush()
 
     @defer.inlineCallbacks
     def test_cron_repeat(self):
