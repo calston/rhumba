@@ -3,7 +3,7 @@ import time
 import json
 import uuid
 
-from twisted.internet import reactor, defer
+from twisted.internet import reactor, defer, protocol
 
 from txredis.client import RedisClient
 
