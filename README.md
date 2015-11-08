@@ -4,6 +4,12 @@
 
 Rhumba is an asynchronous job queue and distributed task service with scheduling.
 
+## Installation 
+
+```console
+$ pip install rhumba
+```
+
 ## Usage
 
 Rhumba tasks are created as plugins configured on each Rhumba worker. The
