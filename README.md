@@ -28,6 +28,19 @@ queues:
 
 *Plugins must exist in the `PYTHON_PATH` of the process*
 
+Then start up your Rhumba worker with `twistd -n rhumba -c myconfig.yaml`
+
+```console
+(ve)colin@nemesis:~/rhumba$ twistd -n rhumba -c examples/rhumba.yml
+2015-11-08 23:15:20+0200 [-] Log opened.
+2015-11-08 23:15:20+0200 [-] twistd 15.4.0 (/home/colin/rhumba/ve/bin/python 2.7.6) starting up.
+2015-11-08 23:15:20+0200 [-] reactor class: twisted.internet.epollreactor.EPollReactor.
+2015-11-08 23:15:20+0200 [-] Starting Rhumba
+2015-11-08 23:15:20+0200 [-] Starting queue testqueue: plugin=<examples.testplugin.Plugin object at 0x7f0836655190>
+2015-11-08 23:15:21+0200 [RedisClient,client] Queing testqueue scheduled job {'message': 'crontest', 'version': 1, 'params': {}, 'id': 'd1f23d42865d11e58d6482576555349e'}
+2015-11-08 23:15:21+0200 [RedisClient,client] [testqueue]: tick!
+```
+
 Task methods can return a deferred, do _not_ implement blocking tasks.
 
 ```python
