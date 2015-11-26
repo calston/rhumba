@@ -10,9 +10,13 @@ class Plugin(RhumbaPlugin):
     @defer.inlineCallbacks
     def call_test(self, args):
         self.log("Test call %s" % repr(args))
-        yield sleep(10)
+        yield sleep(2)
 
-        defer.returnValue(["Hello!"])
+        name = args.get('name')
+        if name:
+            defer.returnValue(["Hello, %s!" % name])
+        else:
+            defer.returnValue(["Hello!"])
 
     @cron(secs="*/5")
     def call_crontest(self, args):

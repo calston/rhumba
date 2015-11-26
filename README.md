@@ -214,7 +214,7 @@ to the backend.
 }
 ```
 
-#### GET /queues/testqueue/call/result/15b81fb6947711e58154448a5b5fd8c0
+#### GET /queues/testqueue/result/15b81fb6947711e58154448a5b5fd8c0
 ```json
 {
     "result": ["Hello!"], 
@@ -231,3 +231,12 @@ to the backend.
 
 ```
 
+Both wait and call accept HTTP POST requests with a json payload
+
+#### POST /queues/testqueue/wait/test {"name": "World"}
+```json
+{
+    "result": ["Hello, World!"], 
+    "time": 1448567851.689572
+}
+```
