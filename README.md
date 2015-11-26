@@ -161,8 +161,9 @@ a convenient way to queue tasks and wait for them without connecting directly
 to the backend.
 
 ### Cluster stats
+
+#### GET /cluster/
 ```json
-GET /cluster/
 {
     "workers": {
         "cthulhu": [
@@ -201,22 +202,28 @@ GET /cluster/
 
 ### Queues
 
+#### GET /queues/
 ```json
-GET /queues/
 ["testqueue"]
+```
 
-GET /queues/testqueue/call/test
+#### GET /queues/testqueue/call/test
+```json
 {
     "uid": "15b81fb6947711e58154448a5b5fd8c0"
 }
+```
 
-GET /queues/testqueue/call/result/15b81fb6947711e58154448a5b5fd8c0
+#### GET /queues/testqueue/call/result/15b81fb6947711e58154448a5b5fd8c0
+```json
 {
     "result": ["Hello!"], 
     "time": 1448567500.198432
 }
+```
 
-GET /queues/testqueue/wait/test
+#### GET /queues/testqueue/wait/test
+```json
 {
     "result": ["Hello!"], 
     "time": 1448567475.792436
