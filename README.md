@@ -152,3 +152,75 @@ def checkmail(request, id):
 
 The async client rhumba.client.AsyncRhumbaClient provides the same API but
 returns deferreds as expected using the txredis client.
+
+## HTTP API
+
+As with all new fangled software Rhumba provides an HTTP API on port 7701
+which will return stats about queues and workers in the pool and also provides
+a convenient way to queue tasks and wait for them without connecting directly
+to the backend.
+
+### Cluster stats
+```json
+GET /cluster/
+{
+    "workers": {
+        "cthulhu": [
+            {
+                "status": "ready",
+                "lastseen": 1448567076.76,
+                "id": "ffc0dc9e947511e59f38448a5b5fd8c0"
+            }
+        ]
+    },
+    "queues": {
+        "testqueue": {
+            "waiting": 0, 
+            "messages": {
+                "crontest": {
+                    "count": 345, 
+                    "time": 22.99
+                },
+                "test": {
+                    "count": 6,
+                    "time": 52000.62
+                }
+            }
+        }
+    },
+    "crons": {
+        "testqueue": {
+            "master": "ffc0dc9e947511e59f38448a5b5fd8c0:cthulhu",
+            "methods": {
+                "call_crontest": 1448567073.0
+            }
+        }
+    }
+}
+```
+
+### Queues
+
+```json
+GET /queues/
+["testqueue"]
+
+GET /queues/testqueue/call/test
+{
+    "uid": "15b81fb6947711e58154448a5b5fd8c0"
+}
+
+GET /queues/testqueue/call/result/15b81fb6947711e58154448a5b5fd8c0
+{
+    "result": ["Hello!"], 
+    "time": 1448567500.198432
+}
+
+GET /queues/testqueue/wait/test
+{
+    "result": ["Hello!"], 
+    "time": 1448567475.792436
+}
+
+```
+
