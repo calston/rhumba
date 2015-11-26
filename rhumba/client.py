@@ -59,7 +59,9 @@ class AsyncRhumbaClient(object):
         """
         Returns a dict of cluster nodes and their status information
         """
-        servers = self.client.keys('rhumba.server.*.heartbeat')
+        servers = yield self.client.keys('rhumba.server.*.heartbeat')
+
+        print servers
         
         d = {}
 

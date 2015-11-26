@@ -8,6 +8,7 @@ from twisted.internet import defer, reactor, error
 from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
 
 from rhumba import service, client
+from rhumba.backends import redis
 
 test_config = {
     'redis_host': 'localhost',
@@ -37,6 +38,12 @@ class FakeRedis(object):
     def get(self, key):
         return self.kv.get(key, None)
 
+    def llen(self, key):
+        return len(self.kv[key])
+
+    def incr(self, *a):
+        pass
+
     def rpop(self, key):
         if (key in self.kv) and self.kv[key]:
             return self.kv[key].pop(-1)
@@ -46,6 +53,12 @@ class FakeRedis(object):
 class AsyncWrapper(object):
     def __init__(self, c):
         self.c = c
+
+    def incr(self, *a):
+        return defer.maybeDeferred(self.c.incr, *a)
+
+    def llen(self, *a):
+        return defer.maybeDeferred(self.c.llen, *a)
 
     def lpush(self, *a, **kw):
         return defer.maybeDeferred(self.c.lpush, *a)
@@ -63,13 +76,18 @@ class AsyncWrapper(object):
 class RhumbaTest(unittest.TestCase):
     def setUp(self):
         self.service = service.RhumbaService(yaml.dump(test_config))
-        self.client = FakeRedis()
+
+        r = FakeRedis()
+
         self.service.setupQueues()
-        self.service.client = AsyncWrapper(self.client)
+
+        redis_backend = redis.Backend(self.service.config)
+        redis_backend.client = AsyncWrapper(r)
+        self.service.client = redis_backend
+        self.client = r
 
         self.c = client.RhumbaClient()
-        self.c._get_client = lambda : self.client
-
+        self.c._get_client = lambda : r
 
 class TestClient(client.AsyncRhumbaClient):
     def __init__(self, client, *a, **kw):
@@ -79,14 +97,14 @@ class TestClient(client.AsyncRhumbaClient):
         pass
 
 class TestService(RhumbaTest):
-
     @defer.inlineCallbacks
     def test_async_client(self):
-        client = TestClient(self.service.client)
+        rc = self.service.client.client
+        client = TestClient(rc)
 
         yield client.queue('testqueue', 'test')
         
-        message = self.service.client.c.kv['rhumba.q.testqueue'][0]
+        message = rc.c.kv['rhumba.q.testqueue'][0]
 
         self.assertIn('test', message)
 
@@ -128,6 +146,7 @@ class TestService(RhumbaTest):
         uuid1 = self.c.queue('testqueue', 'test', {'count': 1, 'delay': 2})
         uuid2 = self.c.queue('testqueue', 'test', {'count': 2, 'delay': 1})
 
+
         reactor.callLater(0, queue.queueRun)
         reactor.callLater(1, queue.queueRun)
 
@@ -142,17 +161,6 @@ class TestService(RhumbaTest):
         result = yield self._wait_for('testqueue', uuid2)
         
         self.assertEquals(result['result'], None)
-
-
-    def setUp(self):
-        self.service = service.RhumbaService(yaml.dump(test_config))
-        self.client = FakeRedis()
-        self.service.setupQueues()
-        self.service.client = AsyncWrapper(self.client)
-
-        self.c = client.RhumbaClient()
-        self.c._get_client = lambda : self.client
-
 
 class TestCron(RhumbaTest):
     def _messages(self):

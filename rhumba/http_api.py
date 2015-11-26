@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
-from twisted.web import server, resource
-from twisted.internet import defer, reactor
-from twisted.python import log
-
 import json
 import cgi
 import hmac
 import hashlib
 import base64
 import re
+import time
+
+from twisted.web import server, resource
+from twisted.internet import defer, reactor
+from twisted.python import log
 
 try:
     from urllib.parse import urlparse
@@ -33,15 +34,49 @@ class APIProcessor(object):
             'name': queue
         }
 
+    @defer.inlineCallbacks
     def queue_call(self, request, queue, method):
         params = request.data
 
-        return self.service.queue(queue, method, params)
+        id = yield self.service.client.queue(queue, method, params)
+        defer.returnValue({'uid': id})
+
+    def queue_wait_result(self, request, queue, uid):
+        d = defer.Deferred()
+
+        t = time.time()
+
+        def checkResult():
+            def result(r):
+                if r:
+                    return d.callback(r)
+                    
+                if (time.time() - t) > 86400:
+                    raise Exception(
+                        "Timeout waiting for result on %s:%s" % (queue, uid))
+                else:
+                    reactor.callLater(1, checkResult)
+
+            self.service.client.getResult(queue, uid).addCallback(result)
+
+        reactor.callLater(0, checkResult)
+
+        return d
+
+    @defer.inlineCallbacks
+    def queue_call_wait(self, request, queue, method):
+        call = yield self.queue_call(request, queue, method)
+        result = yield self.queue_wait_result(request, queue, call['uid'])
+
+        defer.returnValue(result)
 
     def list_queues(self, request):
         log.msg('List queues' + repr(request))
 
         return self.service.queues.keys()
+
+    def cluster_detail(self, request):
+        return self.service.client.clusterStatus()
 
 class APIResource(resource.Resource):
     isLeaf = True
@@ -56,8 +91,11 @@ class APIResource(resource.Resource):
 
         self.paths = (
             (r'^/queues/(\w+)/call/(\w+)', api.queue_call),
+            (r'^/queues/(\w+)/result/(\w+)', api.queue_wait_result),
+            (r'^/queues/(\w+)/wait/(\w+)', api.queue_call_wait),
             (r'^/queues/(\w+)', api.queue_detail),
             (r'^/queues/$', api.list_queues),
+            (r'^/cluster/$', api.cluster_detail),
         )
 
     def completeCall(self, response, request):

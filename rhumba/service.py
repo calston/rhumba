@@ -1,6 +1,7 @@
 import time
 import uuid
 import exceptions
+import importlib
 import json
 import yaml
 import socket
@@ -27,6 +28,8 @@ class RhumbaService(service.Service):
 
         self.uuid = uuid.uuid1().get_hex()
 
+        self.backend = self.config.get('backend', 'rhumba.backends.redis')
+
         self.api_service = self.config.get('api_enabled', True)
 
         self.hostname = self.config.get('hostname',
@@ -42,18 +45,6 @@ class RhumbaService(service.Service):
         self.crons = {}
 
         self.t = task.LoopingCall(self.heartbeat)
-
-    def queue(self, queue, message, params={}):
-        log.msg('Queing job %s/%s:%s' % (queue, message, repr(params)))
-        d = {
-            'id': uuid.uuid1().get_hex(),
-            'version': 1,
-            'message': message,
-            'params': params
-        }
-
-        return self.client.lpush(
-            'rhumba.q.%s' % queue, json.dumps(d))
 
     @defer.inlineCallbacks
     def checkCrons(self, now):
@@ -71,14 +62,16 @@ class RhumbaService(service.Service):
                     if cron.checkCron(lastRun, now):
                         plug = self.queues[queue].plugin
                         yield self.setLastRun(queue, cron.name, now)
-                        # Queue this job
 
-                        yield self.queue(queue, cron.name.split('call_', 1)[-1])
+                        # Queue this job
+                        yield self.client.queue(queue, cron.name.split('call_', 1)[-1])
    
     @defer.inlineCallbacks
     def heartbeat(self):
-
         yield self.checkCrons(datetime.datetime.now())
+
+        yield self.client.set(
+            "rhumba.server.%s.uuid" % self.hostname, self.uuid, expire=self.expire)
 
         yield self.client.set(
             "rhumba.server.%s.heartbeat" % self.hostname, time.time(), expire=self.expire)
@@ -133,10 +126,18 @@ class RhumbaService(service.Service):
                 yield self.deregisterCronRunner(queue)
 
     @defer.inlineCallbacks
+    def startBackend(self):
+        try:
+            self.client = getattr(importlib.import_module(
+                self.backend), 'Backend')(self.config)
+            yield self.client.connect()
+
+        except exceptions.ImportError, e:
+            raise Exception("Unable to load backend %s" % self.backend)
+
+    @defer.inlineCallbacks
     def startService(self):
-        clientCreator = protocol.ClientCreator(reactor, RedisClient)
-        self.client = yield clientCreator.connectTCP(
-            self.redis_host, self.redis_port)
+        yield self.startBackend()
         
         log.msg('Starting Rhumba')
     

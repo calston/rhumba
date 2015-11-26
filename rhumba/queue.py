@@ -34,14 +34,6 @@ class RhumbaQueue(object):
             return None
         
     @defer.inlineCallbacks
-    def grabQueue(self):
-        item = yield self.service.client.rpop("rhumba.q.%s" % self.name)
-        if item:
-            defer.returnValue(json.loads(item))
-        else:
-            defer.returnValue(None)
-
-    @defer.inlineCallbacks
     def processQueue(self, item):
         m = item.get('message')
         if m:
@@ -49,12 +41,16 @@ class RhumbaQueue(object):
             yield self.service.setStatus("processing:%s:%s:%s" % (
                 m, uid, time.time()))
 
+            start = time.time()
             result = yield self.processItem(m, item.get('params', {}))
+            duration = time.time() - start
 
             d = {
                 'result': result,
                 'time': time.time()
             }
+
+            yield self.service.client.queueStats(self.name, m, duration)
 
             yield self.service.client.set('rhumba.q.%s.%s' % (self.name, uid),
                 json.dumps(d), expire=self.expire)
@@ -76,8 +72,8 @@ class RhumbaQueue(object):
 
         if self.jobs >= self.max_jobs:
             defer.returnValue(None)
-        
-        item = yield self.grabQueue()
+
+        item = yield self.service.client.popQueue(self.name)
 
         if item:
             self.jobs += 1
