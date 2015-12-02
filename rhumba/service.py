@@ -32,8 +32,9 @@ class RhumbaService(service.Service):
 
         self.api_service = self.config.get('api_enabled', True)
 
-        self.hostname = self.config.get('hostname',
-            socket.gethostbyaddr(socket.gethostname())[0])
+        self.hostname = self.config.get('hostname')
+        if not self.hostname:
+            self.hostname = socket.gethostbyaddr(socket.gethostname())[0]
 
         self.redis_host = self.config.get('redis_host', 'localhost')
         self.redis_port = int(self.config.get('redis_port', 6379))
