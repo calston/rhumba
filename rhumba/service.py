@@ -6,7 +6,6 @@ import json
 import yaml
 import socket
 import datetime
-import platform
 
 from twisted.application import service
 from twisted.internet import task, reactor, protocol, defer
