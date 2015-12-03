@@ -6,6 +6,7 @@ import json
 import yaml
 import socket
 import datetime
+import platform
 
 from twisted.application import service
 from twisted.internet import task, reactor, protocol, defer
@@ -34,7 +35,15 @@ class RhumbaService(service.Service):
 
         self.hostname = self.config.get('hostname')
         if not self.hostname:
-            self.hostname = socket.gethostbyaddr(socket.gethostname())[0]
+            hs = socket.gethostname()
+            if '.' in hs:
+                self.hostname = hs
+            else:
+                # Try and resolve our FQDN
+                try:
+                    self.hostname = socket.gethostbyaddr(hs)[0]
+                except:
+                    self.hostname = hs
 
         self.redis_host = self.config.get('redis_host', 'localhost')
         self.redis_port = int(self.config.get('redis_port', 6379))
