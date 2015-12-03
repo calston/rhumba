@@ -125,11 +125,10 @@ class HTTPRequest(object):
     def abort_request(self, request):
         """Called to abort request on timeout"""
         self.timedout = True
-        if not request.called:
-            try:
-                request.cancel()
-            except error.AlreadyCancelled:
-                return
+        try:
+            request.cancel()
+        except error.AlreadyCancelled:
+            return
 
     @defer.inlineCallbacks
     def response(self, request):
@@ -171,10 +170,10 @@ class HTTPRequest(object):
             def requestAborted(failure):
                 if timer.active():
                     timer.cancel()
-
+    
                 failure.trap(defer.CancelledError,
                              error.ConnectingCancelledError)
-
+    
                 raise Timeout(
                     "Request took longer than %s seconds" % timeout)
 
@@ -184,23 +183,24 @@ class HTTPRequest(object):
 
         return request
 
-    def getBody(self, url, method='GET', headers={}, data=None, socket=None, timeout=120):
+    @classmethod
+    def getBody(cls, url, method='GET', headers={}, data=None, socket=None, timeout=120):
         """Make an HTTP request and return the body
         """
-
         if not 'User-Agent' in headers:
             headers['User-Agent'] = ['Tensor HTTP checker']
 
-        return self.request(url, method, headers, data, socket, timeout)
+        return cls().request(url, method, headers, data, socket, timeout)
 
+    @classmethod
     @defer.inlineCallbacks
-    def getJson(self, url, method='GET', headers={}, data=None, socket=None, timeout=120):
+    def getJson(cls, url, method='GET', headers={}, data=None, socket=None, timeout=120):
         """Fetch a JSON result via HTTP
         """
         if not 'Content-Type' in headers:
             headers['Content-Type'] = ['application/json']
 
-        body = yield self.getBody(url, method, headers, data, socket, timeout)
+        body = yield cls().getBody(url, method, headers, data, socket, timeout)
 
         defer.returnValue(json.loads(body))
 

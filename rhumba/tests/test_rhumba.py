@@ -4,8 +4,7 @@ import datetime
 
 from twisted.trial import unittest
 
-from twisted.internet import defer, reactor, error
-from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
+from twisted.internet import defer, reactor
 
 from rhumba import service, client
 from rhumba.backends import redis
