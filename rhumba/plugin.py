@@ -9,7 +9,7 @@ class RhumbaPlugin(object):
     """
     def __init__(self, config):
         self.config = config
-        self.http = HTTPRequest()
+        self.http = HTTPRequest
 
     def log(self, *a, **kw):
         log.msg("[%s]: %s" % (self.config['name'], a[0]), *a[1:], **kw)
