@@ -67,6 +67,14 @@ class Plugin(RhumbaPlugin):
         yield sleep(args.get('delay', 1))
         defer.returnValue(None)
 
+    @cron(weekday=crontab.Weekdays)
+    def call_weekdays(self, args):
+        self.log("Test cron %s" % repr(args))
+
+    @cron(hour='8-17', weekday=crontab.Weekdays)
+    def call_businesshours(self, args):
+        self.log("Test cron %s" % repr(args))
+
     @cron(min='30', hour='*/2', weekday=crontab.Tuesday)
     @defer.inlineCallbacks
     def call_everytwohoursontuesday(self, args):

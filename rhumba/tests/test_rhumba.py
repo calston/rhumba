@@ -331,6 +331,39 @@ class TestCron(RhumbaTest):
         self._flush()
 
     @defer.inlineCallbacks
+    def test_cron_weekdays(self):
+        queue = self.service.queues['testqueue']
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 15, 10, 2, 1))
+        self.assertIn('weekdays', self._messages())
+        self.assertIn('businesshours', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 15, 11, 2, 1))
+        self.assertNotIn('weekdays', self._messages())
+        self.assertIn('businesshours', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 16, 11, 2, 2))
+        self.assertIn('weekdays', self._messages())
+        self.assertIn('businesshours', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 16, 11, 59, 59))
+        self.assertNotIn('businesshours', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 16, 20, 1, 1))
+        self.assertNotIn('businesshours', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 19, 11, 2, 2))
+        self.assertNotIn('weekdays', self._messages())
+        self.assertNotIn('businesshours', self._messages())
+        self._flush()
+
+
+    @defer.inlineCallbacks
     def test_cron_month(self):
         queue = self.service.queues['testqueue']
 
