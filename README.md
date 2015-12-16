@@ -97,6 +97,18 @@ class Plugin(RhumbaPlugin):
         self.log("It's 12pm!")
 ```
 
+Matching ranges and lists is also possible, eg `hour="1-3"` or `day=(5, 6, 9)`
+and any combination of these.
+
+```python
+from rhumba import RhumbaPlugin, cron, crontab
+
+class Plugin(RhumbaPlugin):
+    @cron(hour="8-17", weekday=crontab.Weekdays)
+    def call_during_business_hours(self, args):
+        # do stuff 
+```
+
 Tasks can also return JSON serialisable results.
 
 ## Calling tasks
