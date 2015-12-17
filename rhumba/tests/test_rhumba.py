@@ -263,10 +263,19 @@ class TestCron(RhumbaTest):
         yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 11, 2, 2))
         self.assertIn('everyhour', self._messages())
         self.assertNotIn('atlunch', self._messages())
+        self._flush()
 
         yield self.service.checkCrons(datetime.datetime(2015, 4, 3, 12, 12, 1))
         self.assertIn('everyhour', self._messages())
         self.assertIn('atlunch', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 16, 8, 0, 0))
+        self.assertNotIn('weekhour', self._messages())
+        self._flush()
+
+        yield self.service.checkCrons(datetime.datetime(2015, 12, 16, 9, 1, 0))
+        self.assertIn('weekhour', self._messages())
 
     @defer.inlineCallbacks
     def test_cron_mins_hour(self):

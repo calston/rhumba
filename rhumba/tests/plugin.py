@@ -60,6 +60,10 @@ class Plugin(RhumbaPlugin):
         yield sleep(args.get('delay', 1))
         defer.returnValue(None)
 
+    @cron(hour=8, month=12)
+    def call_december_8am(self, args):
+        self.log("Test cron %s" % repr(args))
+
     @cron(hour=12)
     @defer.inlineCallbacks
     def call_atlunch(self, args):
@@ -69,6 +73,10 @@ class Plugin(RhumbaPlugin):
 
     @cron(weekday=crontab.Weekdays)
     def call_weekdays(self, args):
+        self.log("Test cron %s" % repr(args))
+
+    @cron(hour=9, weekday=crontab.Weekdays)
+    def call_weekhour(self, args):
         self.log("Test cron %s" % repr(args))
 
     @cron(hour='8-17', weekday=crontab.Weekdays)
