@@ -57,6 +57,14 @@ class Backend(RhumbaBackend):
             defer.returnValue(None)
 
     @defer.inlineCallbacks
+    def popDirectQueue(self, name, queue):
+        item = yield self.client.rpop("rhumba.dq.%s.%s" % (name, queue))
+        if item:
+            defer.returnValue(json.loads(item))
+        else:
+            defer.returnValue(None)
+
+    @defer.inlineCallbacks
     def getResult(self, queue, uid):
         r = yield self.client.get('rhumba.q.%s.%s' % (queue, uid))
 
