@@ -130,6 +130,30 @@ class Backend(RhumbaBackend):
         defer.returnValue(msgstats)
 
     @defer.inlineCallbacks
+    def clusterQueues(self):
+        """ Return a dict of queues in cluster and servers running them
+        """
+        servers = yield self.keys('rhumba\.server\.*\.heartbeat')
+
+        queues = {}
+
+        for s in servers:
+            sname = s.split('.', 2)[-1].rsplit('.', 1)[0]
+
+            qs = yield self.get('rhumba.server.%s.queues' % sname)
+            uuid = yield self.get('rhumba.server.%s.uuid' % sname)
+       
+            qs = json.loads(qs)
+
+            for q in qs:
+                if q not in queues:
+                    queues[q] = []
+
+                queues[q].append({'host': sname, 'uuid': uuid})
+
+        defer.returnValue(queues)
+
+    @defer.inlineCallbacks
     def clusterStatus(self):
         """
         Returns a dict of cluster nodes and their status information

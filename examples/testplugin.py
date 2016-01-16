@@ -19,6 +19,10 @@ class Plugin(RhumbaPlugin):
             defer.returnValue(["Hello!"])
 
     @cron(secs="*/5")
+    @defer.inlineCallbacks
     def call_crontest(self, args):
+        qs = yield self.client.clusterQueues()
+
+        self.log(repr(qs[self.queue_name]))
         self.log("tick!")
 

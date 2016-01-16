@@ -10,6 +10,7 @@ class RhumbaPlugin(object):
     def __init__(self, config, client):
         self.config = config
         self.client = client
+        self.queue_name = config['name']
         self.http = HTTPRequest
 
     def log(self, *a, **kw):
