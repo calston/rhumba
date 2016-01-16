@@ -28,7 +28,9 @@ class RhumbaQueue(object):
 
     def loadPlugin(self, plugin):
         try:
-            return getattr(importlib.import_module(plugin), 'Plugin')(self.config)
+            return getattr(importlib.import_module(plugin), 'Plugin')(
+                self.config, self.service.client)
+
         except exceptions.ImportError, e:
             log.msg("Error importing plugin %s : %s" % (plugin, repr(e)))
             return None
@@ -101,6 +103,7 @@ class RhumbaQueue(object):
 
     def tick(self):
         reactor.callLater(self.fast_inter, self.queueRun)
+        reactor.callLater(self.fast_inter, self.queueFan)
 
     def startQueue(self):
         """Starts the timer for this queue"""

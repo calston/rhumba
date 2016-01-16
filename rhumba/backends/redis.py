@@ -31,7 +31,7 @@ class Backend(RhumbaBackend):
         )
 
     @defer.inlineCallbacks
-    def queue(self, queue, message, params={}):
+    def queue(self, queue, message, params={}, uids=[]):
         """
         Queue a job in Rhumba
         """
@@ -43,8 +43,13 @@ class Backend(RhumbaBackend):
             'message': message,
             'params': params
         }
-
-        yield self.client.lpush('rhumba.q.%s' % queue, json.dumps(d))
+        
+        if uids:
+            for uid in uids:
+                yield self.client.lpush('rhumba.dq.%s.%s' % (
+                    uid, queue, json.dumps(d)))
+        else:
+            yield self.client.lpush('rhumba.q.%s' % queue, json.dumps(d))
 
         defer.returnValue(d['id'])
 
