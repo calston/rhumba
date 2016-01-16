@@ -83,7 +83,6 @@ class Backend(RhumbaBackend):
         else:
             defer.returnValue([])
 
-    @defer.inlineCallbacks
     def waitForResult(self, queue, uid, timeout=3600, suid=None):
         d = defer.Deferred()
 
@@ -100,7 +99,7 @@ class Backend(RhumbaBackend):
                 else:
                     reactor.callLater(1, checkResult)
 
-            self.client.getResult(queue, uid, suid=suid
+            self.getResult(queue, uid, suid=suid
                 ).addCallback(result)
 
         reactor.callLater(0, checkResult)
