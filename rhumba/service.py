@@ -79,11 +79,14 @@ class RhumbaService(service.Service):
     def heartbeat(self):
         yield self.checkCrons(datetime.datetime.now())
 
-        yield self.client.set(
-            "rhumba.server.%s.uuid" % self.hostname, self.uuid, expire=self.expire)
+        yield self.client.set("rhumba.server.%s.uuid" % self.hostname,
+            self.uuid, expire=self.expire)
 
-        yield self.client.set(
-            "rhumba.server.%s.heartbeat" % self.hostname, time.time(), expire=self.expire)
+        yield self.client.set("rhumba.server.%s.heartbeat" % self.hostname,
+            time.time(), expire=self.expire)
+
+        yield self.client.set("rhumba.server.%s.queues" % self.hostname,
+            json.dumps(self.queues.keys()), expire=self.expire)
 
     def setStatus(self, status):
         return self.client.set(

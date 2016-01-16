@@ -27,7 +27,7 @@ class AsyncRhumbaClient(object):
         )
 
     @defer.inlineCallbacks
-    def queue(self, queue, message, params={}):
+    def queue(self, queue, message, params={}, uids=[]):
         """
         Queue a job in Rhumba
         """
@@ -38,16 +38,25 @@ class AsyncRhumbaClient(object):
             'params': params
         }
 
-        yield self.client.lpush('rhumba.q.%s' % queue, json.dumps(d))
+        if uids:
+            for uid in uids:
+                yield self.client.lpush('rhumba.dq.%s.%s' % (
+                    uid, queue), json.dumps(d))
+        else:
+            yield self.client.lpush('rhumba.q.%s' % queue, json.dumps(d))
 
         defer.returnValue(d['id'])
     
     @defer.inlineCallbacks
-    def getResult(self, queue, uid):
+    def getResult(self, queue, uid, suid=None):
         """
         Retrieve the result of a job from its ID
         """
-        r = yield self.client.get('rhumba.q.%s.%s' % (queue, uid))
+
+        if suid:
+            r = yield self.client.get('rhumba.dq.%s.%s.%s' % (suid, queue, uid))
+        else:
+            r = yield self.client.get('rhumba.q.%s.%s' % (queue, uid))
 
         if r:
             defer.returnValue(json.loads(r))
@@ -97,7 +106,7 @@ class RhumbaClient(object):
     def _get_client(self):
         return redis.StrictRedis(host=self.host, port=self.port, db=self.db)
 
-    def queue(self, queue, message, params={}):
+    def queue(self, queue, message, params={}, uids=[]):
         """
         Queue a job in Rhumba
         """
@@ -108,14 +117,23 @@ class RhumbaClient(object):
             'params': params
         }
 
-        self._get_client().lpush('rhumba.q.%s' % queue, json.dumps(d))
+        if uids:
+            for uid in uids:
+                self._get_client().lpush('rhumba.dq.%s.%s' % (
+                    uid, queue), json.dumps(d))
+        else:
+            self._get_client().lpush('rhumba.q.%s' % queue, json.dumps(d))
+
         return d['id']
 
-    def getResult(self, queue, uid):
+    def getResult(self, queue, uid, suid=None):
         """
         Retrieve the result of a job from its ID
         """
-        r = self._get_client().get('rhumba.q.%s.%s' % (queue, uid))
+        if suid:
+            r = self._get_client().get('rhumba.dq.%s.%s.%s' % (suid, queue, uid))
+        else:
+            r = self._get_client().get('rhumba.q.%s.%s' % (queue, uid))
 
         if r:
             return json.loads(r)

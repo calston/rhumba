@@ -78,11 +78,11 @@ class RhumbaTest(unittest.TestCase):
 
         r = FakeRedis()
 
-        self.service.setupQueues()
-
         redis_backend = redis.Backend(self.service.config)
         redis_backend.client = AsyncWrapper(r)
         self.service.client = redis_backend
+
+        self.service.setupQueues()
         self.client = r
 
         self.c = client.RhumbaClient()
@@ -125,10 +125,10 @@ class TestService(RhumbaTest):
     def test_queues(self):
         self.assertTrue('testqueue' in self.service.queues)
 
-    def _wait_for(self, queue, uid):
+    def _wait_for(self, queue, uid, suid=None):
         d = defer.Deferred()
         def poll(d):
-            result = self.c.getResult(queue, uid)
+            result = self.c.getResult(queue, uid, suid)
 
             if result:
                 d.callback(result)
@@ -159,6 +159,28 @@ class TestService(RhumbaTest):
 
         result = yield self._wait_for('testqueue', uuid2)
         
+        self.assertEquals(result['result'], None)
+
+    @defer.inlineCallbacks
+    def test_fanout(self):
+        queue = self.service.queues['testqueue']
+
+        suid = self.service.uuid
+
+        uuid1 = self.c.queue('testqueue', 'test', {'count': 1, 'delay': 1},
+            uids=[suid, 'justsomefakeuuiddoesntmatter'])
+
+
+        reactor.callLater(0, queue.queueFan)
+
+        result = yield self._wait_for('testqueue', uuid1, suid)
+
+        self.assertEquals(result['result'], None)
+
+        self.service.uuid = 'justsomefakeuuiddoesntmatter'
+        reactor.callLater(0, queue.queueFan)
+
+        result = yield self._wait_for('testqueue', uuid1, self.service.uuid)
         self.assertEquals(result['result'], None)
 
 class TestCron(RhumbaTest):

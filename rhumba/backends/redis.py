@@ -47,7 +47,7 @@ class Backend(RhumbaBackend):
         if uids:
             for uid in uids:
                 yield self.client.lpush('rhumba.dq.%s.%s' % (
-                    uid, queue, json.dumps(d)))
+                    uid, queue), json.dumps(d))
         else:
             yield self.client.lpush('rhumba.q.%s' % queue, json.dumps(d))
 
@@ -70,8 +70,12 @@ class Backend(RhumbaBackend):
             defer.returnValue(None)
 
     @defer.inlineCallbacks
-    def getResult(self, queue, uid):
-        r = yield self.client.get('rhumba.q.%s.%s' % (queue, uid))
+    def getResult(self, queue, uid, suid=None):
+
+        if suid:
+            r = yield self.client.get('rhumba.dq.%s.%s.%s' % (suid, queue, uid))
+        else:
+            r = yield self.client.get('rhumba.q.%s.%s' % (queue, uid))
 
         if r:
             defer.returnValue(json.loads(r))
