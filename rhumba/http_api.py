@@ -42,26 +42,7 @@ class APIProcessor(object):
         defer.returnValue({'uid': id})
 
     def queue_wait_result(self, request, queue, uid):
-        d = defer.Deferred()
-
-        t = time.time()
-
-        def checkResult():
-            def result(r):
-                if r:
-                    return d.callback(r)
-                    
-                if (time.time() - t) > 86400:
-                    raise Exception(
-                        "Timeout waiting for result on %s:%s" % (queue, uid))
-                else:
-                    reactor.callLater(1, checkResult)
-
-            self.service.client.getResult(queue, uid).addCallback(result)
-
-        reactor.callLater(0, checkResult)
-
-        return d
+        return self.service.client.waitForResult(queue, uid)
 
     @defer.inlineCallbacks
     def queue_call_wait(self, request, queue, method):

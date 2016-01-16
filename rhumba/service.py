@@ -73,7 +73,8 @@ class RhumbaService(service.Service):
                         yield self.setLastRun(queue, cron.name, now)
 
                         # Queue this job
-                        yield self.client.queue(queue, cron.name.split('call_', 1)[-1])
+                        yield self.client.queue(
+                            queue, cron.name.split('call_', 1)[-1])
    
     @defer.inlineCallbacks
     def heartbeat(self):
@@ -89,8 +90,8 @@ class RhumbaService(service.Service):
             json.dumps(self.queues.keys()), expire=self.expire)
 
     def setStatus(self, status):
-        return self.client.set(
-            "rhumba.server.%s.status" % self.hostname, status, expire=self.expire)
+        return self.client.set("rhumba.server.%s.status" % self.hostname,
+            status, expire=self.expire)
 
     def startBeat(self):
         self.td = self.t.start(1.0)

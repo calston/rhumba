@@ -24,7 +24,8 @@ class Backend(RhumbaBackend):
 
     @defer.inlineCallbacks
     def connect(self):
-        clientCreator = protocol.ClientCreator(reactor, RedisClient, db=self.redis_db)
+        clientCreator = protocol.ClientCreator(
+            reactor, RedisClient, db=self.redis_db)
 
         self.client = yield clientCreator.connectTCP(
             self.redis_host, self.redis_port
@@ -81,6 +82,30 @@ class Backend(RhumbaBackend):
             defer.returnValue(json.loads(r))
         else:
             defer.returnValue([])
+
+    @defer.inlineCallbacks
+    def waitForResult(self, queue, uid, timeout=3600, suid=None):
+        d = defer.Deferred()
+
+        t = time.time()
+
+        def checkResult():
+            def result(r):
+                if r:
+                    return d.callback(r)
+
+                if (time.time() - t) > timeout:
+                    raise Exception(
+                        "Timeout waiting for result on %s:%s" % (queue, uid))
+                else:
+                    reactor.callLater(1, checkResult)
+
+            self.service.client.getResult(queue, uid, suid=suid
+                ).addCallback(result)
+
+        reactor.callLater(0, checkResult)
+
+        return d
 
     def get(self, key):
         return self.client.get(key)
