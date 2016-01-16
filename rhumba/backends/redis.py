@@ -100,7 +100,7 @@ class Backend(RhumbaBackend):
                 else:
                     reactor.callLater(1, checkResult)
 
-            self.service.client.getResult(queue, uid, suid=suid
+            self.client.getResult(queue, uid, suid=suid
                 ).addCallback(result)
 
         reactor.callLater(0, checkResult)
