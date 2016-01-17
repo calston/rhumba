@@ -51,6 +51,40 @@ class APIProcessor(object):
 
         defer.returnValue(result)
 
+    @defer.inlineCallbacks
+    def queue_fanout(self, request, queue, method):
+        queues = yield self.service.client.clusterQueues()
+
+        servers = queues[queue]
+
+        params = request.data
+
+        id = yield self.service.client.queue(
+            queue, method, params, uids=servers)
+
+        defer.returnValue({'uid': id})
+
+    @defer.inlineCallbacks
+    def queue_fanout_wait(self, request, queue, method):
+        queues = yield self.service.client.clusterQueues()
+
+        servers = queues[queue]
+
+        params = request.data
+
+        id = yield self.service.client.queue(
+            queue, method, params, uids=servers)
+
+        results = {}
+
+        for server in servers:
+            r = yield self.service.client.waitForResult(
+                queue, id, suid=server['uuid'])
+
+            results[server['uuid']] = r
+
+        defer.returnValue(results)
+
     def list_queues(self, request):
         log.msg('List queues' + repr(request))
 
@@ -74,6 +108,8 @@ class APIResource(resource.Resource):
             (r'^/queues/(\w+)/call/(\w+)', api.queue_call),
             (r'^/queues/(\w+)/result/(\w+)', api.queue_wait_result),
             (r'^/queues/(\w+)/wait/(\w+)', api.queue_call_wait),
+            (r'^/queues/(\w+)/fanout/(\w+)', api.queue_fanout),
+            (r'^/queues/(\w+)/fanout/wait/(\w+)', api.queue_fanout_wait),
             (r'^/queues/(\w+)', api.queue_detail),
             (r'^/queues/$', api.list_queues),
             (r'^/cluster/$', api.cluster_detail),

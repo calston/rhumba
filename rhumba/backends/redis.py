@@ -154,16 +154,22 @@ class Backend(RhumbaBackend):
         defer.returnValue(msgstats)
 
     @defer.inlineCallbacks
+    def getClusterServers(self):
+        servers = yield self.keys('rhumba\.server\.*\.heartbeat')
+
+        snames = [s.split('.', 2)[-1].rsplit('.', 1)[0] for s in servers]
+        
+        defer.returnValue(snames)
+
+    @defer.inlineCallbacks
     def clusterQueues(self):
         """ Return a dict of queues in cluster and servers running them
         """
-        servers = yield self.keys('rhumba\.server\.*\.heartbeat')
+        servers = yield self.getClusterServers()
 
         queues = {}
 
-        for s in servers:
-            sname = s.split('.', 2)[-1].rsplit('.', 1)[0]
-
+        for sname in servers:
             qs = yield self.get('rhumba.server.%s.queues' % sname)
             uuid = yield self.get('rhumba.server.%s.uuid' % sname)
        
@@ -182,7 +188,7 @@ class Backend(RhumbaBackend):
         """
         Returns a dict of cluster nodes and their status information
         """
-        servers = yield self.keys('rhumba\.server\.*\.heartbeat')
+        servers = yield self.getClusterServers()
 
         d = {
             'workers': {},
@@ -194,9 +200,7 @@ class Backend(RhumbaBackend):
 
         reverse_map = {}
 
-        for s in servers:
-            sname = s.split('.', 2)[-1].rsplit('.', 1)[0]
-
+        for sname in servers:
             last = yield self.get('rhumba.server.%s.heartbeat' % sname)
             status = yield self.get('rhumba.server.%s.status' % sname)
             uuid = yield self.get('rhumba.server.%s.uuid' % sname)
