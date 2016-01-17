@@ -252,3 +252,29 @@ Both wait and call accept HTTP POST requests with a json payload
     "time": 1448567851.689572
 }
 ```
+
+#### POST /queues/testqueue/fanout/test {"name": "World"}
+```json
+{
+    "uid": "15b81fb6947711e58154448a5b5fd8c0"
+}
+```
+
+Makes a fanout request to all servers active on a specific queue
+
+#### POST /queues/testqueue/fanout/wait/test {"name": "World"}
+```json
+{
+    "511c043cbcf411e5abaa82576555349e": {
+        "result": ["Hello, test!"],
+        "time": 1453019709.481646
+    }, 
+    "f363fe66bcf411e597fa448a5b5fd8c0": {
+        "result": ["Hello, test!"],
+        "time": 1453019597.918752
+    }
+}
+```
+
+Makes a fanout request to all servers and waits for all of them to return
+a result
