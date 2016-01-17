@@ -5,16 +5,9 @@ import hmac
 import hashlib
 import base64
 import re
-import time
 
 from twisted.web import server, resource
 from twisted.internet import defer, reactor
-from twisted.python import log
-
-try:
-    from urllib.parse import urlparse
-except:
-    from urlparse import urlparse
 
 try:
     from twisted.internet import ssl
@@ -29,10 +22,14 @@ class APIProcessor(object):
         self.service = service
         self.config = config
 
+    @defer.inlineCallbacks
     def queue_detail(self, request, queue):
-        return {
-            'name': queue
-        }
+        cluster_queues = yield self.service.client.clusterQueues()
+
+        defer.returnValue({
+            'name': queue,
+            'nodes': cluster_queues[queue]
+        })
 
     @defer.inlineCallbacks
     def queue_call(self, request, queue, method):
@@ -55,7 +52,7 @@ class APIProcessor(object):
     def queue_fanout(self, request, queue, method):
         queues = yield self.service.client.clusterQueues()
 
-        servers = queues[queue]
+        servers = [s['uuid'] for s in queues[queue]]
 
         params = request.data
 
@@ -68,7 +65,7 @@ class APIProcessor(object):
     def queue_fanout_wait(self, request, queue, method):
         queues = yield self.service.client.clusterQueues()
 
-        servers = queues[queue]
+        servers = [s['uuid'] for s in queues[queue]]
 
         params = request.data
 
@@ -79,15 +76,13 @@ class APIProcessor(object):
 
         for server in servers:
             r = yield self.service.client.waitForResult(
-                queue, id, suid=server['uuid'])
+                queue, id, suid=server)
 
-            results[server['uuid']] = r
+            results[server] = r
 
         defer.returnValue(results)
 
     def list_queues(self, request):
-        log.msg('List queues' + repr(request))
-
         return self.service.queues.keys()
 
     def cluster_detail(self, request):
@@ -108,8 +103,8 @@ class APIResource(resource.Resource):
             (r'^/queues/(\w+)/call/(\w+)', api.queue_call),
             (r'^/queues/(\w+)/result/(\w+)', api.queue_wait_result),
             (r'^/queues/(\w+)/wait/(\w+)', api.queue_call_wait),
-            (r'^/queues/(\w+)/fanout/(\w+)', api.queue_fanout),
             (r'^/queues/(\w+)/fanout/wait/(\w+)', api.queue_fanout_wait),
+            (r'^/queues/(\w+)/fanout/(\w+)', api.queue_fanout),
             (r'^/queues/(\w+)', api.queue_detail),
             (r'^/queues/$', api.list_queues),
             (r'^/cluster/$', api.cluster_detail),
