@@ -106,6 +106,46 @@ class Backend(RhumbaBackend):
 
         return d
 
+    def setUUID(self, hostname, uuid, expire=None):
+        return self.client.set("rhumba.server.%s.uuid" % hostname,
+            uuid, expire=expire)
+
+    def setHeartbeat(self, hostname, time, expire=None):
+        return self.client.set("rhumba.server.%s.heartbeat" % hostname,
+            time, expire=expire)
+
+    def setQueues(self, hostname, jsond, expire=None):
+        return self.client.set("rhumba.server.%s.queues" % hostname,
+            jsond, expire=expire)
+
+    def setStatus(self, hostname, status, expire=None):
+        return self.client.set("rhumba.server.%s.status" % hostname,
+            status, expire=expire)
+
+    def setResult(self, queue, uid, result, expire=None, serverid=None):
+        if serverid:
+            return self.client.set(
+                'rhumba.dq.%s.%s.%s' % (serverid, queue, uid), result,
+                expire=expire)
+        else:
+            return self.client.set('rhumba.q.%s.%s' % (queue, uid),
+                result, expire=expire)
+
+    def getCron(self, queue, fn):
+        return self.client.get("rhumba.crons.%s.%s" % (queue, fn))
+
+    def setLastCronRun(self, queue, fn, now):
+        return self.client.set("rhumba.crons.%s.%s" % (queue, fn), now)
+
+    def registerCron(self, queue, uuid):
+        return self.client.set("rhumba.crons.%s" % queue, uuid, expire=60)
+
+    def deregisterCron(self, queue):
+        return self.client.delete("rhumba.crons.%s" % queue)
+
+    def checkCron(self, queue):
+        return self.client.get("rhumba.crons.%s" % queue)
+
     def get(self, key):
         return self.client.get(key)
 
@@ -140,7 +180,6 @@ class Backend(RhumbaBackend):
             stat = key.split('.')[4]
             val = yield self.get(key)
 
-            print key, val
             if stat == 'time':
                 val = int(val)/100.0
             else:

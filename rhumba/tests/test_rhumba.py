@@ -111,6 +111,8 @@ class TestService(RhumbaTest):
     def test_heartbeat(self):
         yield self.service.heartbeat()
 
+        print self.client.kv
+
         hb = self.client.kv.get("rhumba.server.%s.heartbeat" % self.service.hostname)
 
         self.assertTrue(hb is not None)
@@ -144,7 +146,6 @@ class TestService(RhumbaTest):
 
         uuid1 = self.c.queue('testqueue', 'test', {'count': 1, 'delay': 2})
         uuid2 = self.c.queue('testqueue', 'test', {'count': 2, 'delay': 1})
-
 
         reactor.callLater(0, queue.queueRun)
         reactor.callLater(1, queue.queueRun)

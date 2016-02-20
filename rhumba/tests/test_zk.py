@@ -9,6 +9,8 @@ from twisted.internet import defer, reactor
 from rhumba import service, client
 from rhumba.backends import zk
 
+from .plugin import sleep
+
 test_config = {
     'backend': 'rhumba.backends.zk',
     'queues': [{
@@ -29,6 +31,16 @@ class Test(unittest.TestCase):
         yield self.service.startBackend()
         self.service.setupQueues()
 
+        try:
+            it = yield self.service.client.client.get_children('/rhumba/q/testqueue')
+
+            for i in it:
+                yield self.service.client.client.delete('/rhumba/q/testqueue/%s' % i)
+
+            yield self.service.client.client.delete('/rhumba/q/testqueue')
+        except:
+            pass
+
     def test_start_backend(self):
         pass
         
@@ -38,8 +50,12 @@ class Test(unittest.TestCase):
         queue = self.service.queues['testqueue']
 
         uuid1 = yield self.service.client.queue('testqueue', 'test', {'count': 1, 'delay': 2})
-        print "Queued..."
+
+        yield sleep(0.1)
 
         yield queue.queueRun()
 
-        #result = self.c.getResult('testqueue', uuid2)
+        item = yield self.service.client.getResult('testqueue', uuid1)
+
+        self.assertEquals(item['result'], None)
+

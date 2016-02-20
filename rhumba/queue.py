@@ -36,7 +36,7 @@ class RhumbaQueue(object):
             return None
         
     @defer.inlineCallbacks
-    def processQueue(self, item, result_key='q'):
+    def processQueue(self, item, fan=False):
         m = item.get('message')
         if m:
             uid = item['id']
@@ -54,13 +54,15 @@ class RhumbaQueue(object):
 
             yield self.service.client.queueStats(self.name, m, duration)
 
-            yield self.service.client.set(
-                'rhumba.%s.%s.%s' % (result_key, self.name, uid),
-                json.dumps(d), expire=self.expire)
+            result = json.dumps(d)
+            
+            if fan:
+                yield self.service.client.setResult(self.name, uid, result,
+                    serverid=self.service.uuid, expire=self.expire)
 
-    @defer.inlineCallbacks
-    def reQueue(self, request):
-        response = yield self.service.client.lpush("rhumba.q.%s" % self.name)
+            else:
+                yield self.service.client.setResult(self.name, uid, result,
+                    expire=self.expire)
 
     def processItem(self, message, params):
         fn = getattr(self.plugin, 'call_%s' % message)
@@ -95,7 +97,7 @@ class RhumbaQueue(object):
         item = yield self.service.client.popDirectQueue(self.service.uuid, self.name)
 
         if item:
-            yield self.processQueue(item, result_key='dq.%s' % self.service.uuid)
+            yield self.processQueue(item, fan=True)
         else:
             yield self.service.setStatus("ready")
 
