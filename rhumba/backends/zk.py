@@ -95,7 +95,7 @@ class RQSClient(HTTPRequest):
 
         body = yield self.request(self.url + key, headers=headers, timeout=5)
 
-        defer.returnValue(json.loads(body))
+        defer.returnValue(body)
 
     @defer.inlineCallbacks
     def set(self, key, value, **kw):
@@ -151,23 +151,31 @@ class RhumbaQueueService(object):
         if propagate:
             reactor.callLater(0, self.updateNeighbours, key, value, expire)
 
+    @defer.inlineCallbacks
     def get(self, key):
-        if key in self.queue:
-            return self.queue[key]['v']
-
+        if self.master == self.hostname:
+            if key in self.queue:
+                defer.returnValue(self.queue[key]['v'])
+            else:
+                defer.returnValue()
         else:
-            return None
-
+            yield cl.get(key)
+            
+    @defer.inlineCallbacks
     def start(self):
         site = server.Site(RQSResource(self.config, self))
 
         e = yield self.backend.client.exists('/rhumba/rqs_master')
         if e:
-            master = yield self.backend.client.get('/rhumba/rqs_master')
+            self.master = yield self.backend.client.get('/rhumba/rqs_master')
+            log.msg('%s is the master' % self.master)
+            self.mrqs = RQSClient(self.master)
         else:
+            log.msg('I am the master')
             yield self.backend.client.create('/rhumba/rqs_master',
                 self.hostname, flags=zookeeper.EPHEMERAL)
-
+            self.master = self.hostname
+            self.mrqs = None
 
         if self.ssl_cert and self.ssl_key:
             if SSL:
@@ -280,7 +288,6 @@ class Backend(RhumbaBackend):
                 if not node:
                     try:
                         if rpath == '/rhumba'+path:
-                            print "Create", rpath, flags
                             yield self.client.create(rpath, flags=flags)
                         else:
                             yield self.client.create(rpath)
