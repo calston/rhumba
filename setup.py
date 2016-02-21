@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="rhumba",
-    version='0.1.18',
+    version='0.2.0',
     url='http://github.com/calston/rhumba',
     license='MIT',
     description="An asynchronous job queue written in Twisted",
