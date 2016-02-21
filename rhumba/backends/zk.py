@@ -122,6 +122,8 @@ class RhumbaQueueService(object):
         self.ssl_cert = config.get('rqs_ssl_cert', None)
         self.ssl_key = config.get('rqs_ssl_key', None)
 
+        self.master = None
+
         self.queue = {}
 
     def keys(self):
@@ -135,11 +137,10 @@ class RhumbaQueueService(object):
     @defer.inlineCallbacks
     def updateNeighbours(self, key, value, expire=3600):
         servers = yield self.getNeighbours()
-        print servers
 
         for s in servers:
             cl = RQSClient(s)
-            yield cl.set(key, value, expire=expire)
+            yield cl.set(key, value, expire=expire, propagate=False)
 
     def set(self, key, value, expire=3600, propagate=True):
         self.queue[key] = {
@@ -159,6 +160,14 @@ class RhumbaQueueService(object):
 
     def start(self):
         site = server.Site(RQSResource(self.config, self))
+
+        e = yield self.backend.client.exists('/rhumba/rqs_master')
+        if e:
+            master = yield self.backend.client.get('/rhumba/rqs_master')
+        else:
+            yield self.backend.client.create('/rhumba/rqs_master',
+                self.hostname, flags=zookeeper.EPHEMERAL)
+
 
         if self.ssl_cert and self.ssl_key:
             if SSL:
@@ -196,12 +205,18 @@ class Backend(RhumbaBackend):
 
         if self.config.get('rqs', True):
             yield self.queueService.start()
-
+            self.t = None
         else:
             self.t = task.LoopingCall(self.expireResults)
             self.t.start(5.0)
 
         yield self.setupPaths()
+
+    @defer.inlineCallbacks
+    def close(self):
+        if self.t:
+            self.t.stop()
+        yield self.client.close()
 
     @defer.inlineCallbacks
     def setupPaths(self):
@@ -244,7 +259,7 @@ class Backend(RhumbaBackend):
                     yield self.client.delete(path)
 
     @defer.inlineCallbacks
-    def _try_create_node(self, path, recursive=True, *a, **kw):
+    def _try_create_node(self, path, recursive=True, flags=0):
         node = yield self.client.exists('/rhumba' + path)
 
         if node:
@@ -265,8 +280,8 @@ class Backend(RhumbaBackend):
                 if not node:
                     try:
                         if rpath == '/rhumba'+path:
-                            print "Create", rpath, kw
-                            yield self.client.create(rpath, *a, **kw)
+                            print "Create", rpath, flags
+                            yield self.client.create(rpath, flags=flags)
                         else:
                             yield self.client.create(rpath)
 
@@ -286,20 +301,26 @@ class Backend(RhumbaBackend):
 
     @defer.inlineCallbacks
     def _get_queue(self, path):
-        yield self._try_create_node(path)
-        item = yield Queue('/rhumba'+path, self.client).get()
+        e = yield self.client.exists('/rhumba'+path)
+        if e:
+            item = yield Queue('/rhumba'+path, self.client).get()
 
-        defer.returnValue(item)
+            defer.returnValue(item)
+        else:
+            defer.returnValue(None)
 
     @defer.inlineCallbacks
     def _get_key(self, path):
-        yield self._try_create_node(path)
-        item = yield self.client.get('/rhumba'+path)
-        defer.returnValue(item[0])
+        e = yield self.client.exists('/rhumba'+path)
+        if e:
+            item = yield self.client.get('/rhumba'+path)
+            defer.returnValue(item[0])
+        else:
+            defer.returnValue(None)
 
     @defer.inlineCallbacks
-    def _set_key(self, path, value, **kw):
-        yield self._try_create_node(path, **kw)
+    def _set_key(self, path, value, flags=0):
+        yield self._try_create_node(path, flags=flags)
         item = yield self.client.set('/rhumba'+path, value)
 
     @defer.inlineCallbacks
@@ -436,15 +457,15 @@ class Backend(RhumbaBackend):
             str(now), flags=zookeeper.EPHEMERAL)
 
     def registerCron(self, queue, uuid):
-        return self._set_key('/crons/%s' % queue, uuid,
+        return self._set_key('/croner/%s' % queue, uuid,
             flags=zookeeper.EPHEMERAL)
 
     def deregisterCron(self, queue):
-        return self.cleanNodes('/rhumba/crons/%s' % queue)
+        return self.cleanNodes('/rhumba/croner/%s' % queue)
 
     @defer.inlineCallbacks
     def checkCron(self, queue):
-        path = '/crons/%s' % queue
+        path = '/croner/%s' % queue
         item = yield self._get_key(path)
 
         defer.returnValue(item)
@@ -582,7 +603,7 @@ class Backend(RhumbaBackend):
                 if last:
                     d['crons'][queue]['methods'][method] = float(last)
             
-            uid = yield self._get_key('/crons/%s' % queue)
+            uid = yield self._get_key('/croner/%s' % queue)
             if uid:
                 d['crons'][queue]['master'] = '%s:%s' % (uid, reverse_map[uid])
 

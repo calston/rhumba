@@ -139,6 +139,8 @@ class RhumbaService(service.Service):
                 log.msg('Deregistering queue %s' % queue)
                 yield self.deregisterCronRunner(queue)
 
+        yield self.client.close()
+
     @defer.inlineCallbacks
     def startBackend(self):
         try:
