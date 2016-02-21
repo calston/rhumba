@@ -143,7 +143,7 @@ class RhumbaService(service.Service):
     def startBackend(self):
         try:
             self.client = getattr(importlib.import_module(
-                self.backend), 'Backend')(self.config)
+                self.backend), 'Backend')(self.config, self)
             yield self.client.connect()
 
         except exceptions.ImportError, e:

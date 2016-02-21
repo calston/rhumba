@@ -13,6 +13,7 @@ from rhumba.backends import zk
 from .plugin import sleep
 
 test_config = {
+    'rqs': False,
     'backend': 'rhumba.backends.zk',
     'queues': [{
         'id': 0, 'max_jobs': 1,
@@ -23,22 +24,6 @@ test_config = {
 
 class Test(unittest.TestCase):
     @defer.inlineCallbacks
-    def cleanNodes(self, path):
-        try:
-            it = yield self.service.client.client.get_children(path)
-        except:
-            it = []
-
-        for i in it:
-            yield self.cleanNodes(path + '/'+i)
-
-        try:
-            yield self.service.client.client.delete(path)
-        except:
-            pass
-
-
-    @defer.inlineCallbacks
     def setUp(self):
         self.service = service.RhumbaService(yaml.dump(test_config))
 
@@ -47,9 +32,9 @@ class Test(unittest.TestCase):
 
         yield self.service.startBackend()
 
-        yield self.cleanNodes('/rhumba/q')
-        yield self.cleanNodes('/rhumba/dq')
-        yield self.cleanNodes('/rhumba/crons')
+        yield self.service.client.cleanNodes('/rhumba/q')
+        yield self.service.client.cleanNodes('/rhumba/dq')
+        yield self.service.client.cleanNodes('/rhumba/crons')
 
         yield self.service.client.setupPaths()
         self.service.setupQueues()

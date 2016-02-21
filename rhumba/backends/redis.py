@@ -14,7 +14,7 @@ class Backend(RhumbaBackend):
     """
     Rhumba redis backend
     """
-    def __init__(self, config):
+    def __init__(self, config, parent):
         self.config = config
         self.redis_host = self.config.get('redis_host', 'localhost')
         self.redis_port = int(self.config.get('redis_port', 6379))

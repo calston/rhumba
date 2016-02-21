@@ -2,33 +2,166 @@ import redis
 import time
 import json
 import uuid
+import cgi
 
-from twisted.internet import reactor, defer, protocol
+from twisted.internet import reactor, defer, protocol, task
 from twisted.python import log
+from twisted.web import server, resource
 
 from rhumba.backend import RhumbaBackend
+from rhumba.http_client import HTTPRequest
 
 from txzookeeper.client import ZookeeperClient
 from txzookeeper.queue import Queue, QueueItem
 
 import zookeeper
 
+try:
+    from twisted.internet import ssl
+    SSL=True
+except:
+    SSL=False
+
+
+class RQSResource(resource.Resource):
+    isLeaf = True
+    addSlash = True
+
+    def __init__(self, config, service):
+        self.config = config
+        self.service = service
+
+    def render_POST(self, request):
+        request.setHeader("content-type", "application/json")
+        # Get request
+        data = cgi.escape(request.content.read())
+
+        if data:
+            try:
+                data = json.loads(data)
+            except:
+                data = data
+
+        d = defer.maybeDeferred(self.setRequest, request.path, request, data)
+
+        d.addCallback(self.completeCall, request)
+
+        return server.NOT_DONE_YET
+
+    def render_GET(self, request):
+        request.setHeader("content-type", "application/json")
+
+        d = defer.maybeDeferred(self.getRequest, request.path, request)
+
+        d.addCallback(self.completeCall, request)
+
+        return server.NOT_DONE_YET
+
+    def getRequest(self, path, request):
+        path = path.strip('/')
+        if path:
+            return self.service.get(path)
+        else:
+            return self.service.keys()
+
+    def setRequest(self, path, request, data):
+        path = path.strip('/')
+        if path:
+            self.service.set(path, data)
+            return 'Ok'
+
+        return None
+
+    def completeCall(self, response, request):
+        # Render the json response from call
+        response = json.dumps(response)
+        request.write(response)
+        request.finish()
+
+class RQSClient(HTTPRequest):
+    def __init__(self, hostname, port, ssl=False):
+        if ssl:
+            self.url = 'https://%s:%s/' % (hostname, port)
+        else:
+            self.url = 'http://%s:%s/' % (hostname, port)
+
+class RhumbaQueueService(object):
+    def __init__(self, config, backend, hostname):
+        self.config = config
+
+        self.backend = backend
+        self.hostname = hostname
+
+        self.port = int(config.get('rqs_port', 7702))
+        self.ssl_cert = config.get('rqs_ssl_cert', None)
+        self.ssl_key = config.get('rqs_ssl_key', None)
+
+        self.queue = {}
+
+    def keys(self):
+        return self.queue.keys()
+
+    @defer.inlineCallbacks
+    def getNeighbours(self):
+        servers = yield self.backend.getClusterServers()
+
+    def set(self, key, value, expire=3600):
+        self.queue[key] = {
+            'v': value,
+            'c': time.time(),
+            'e': time.time() + expire
+        }
+
+    def get(self, key):
+        if key in self.queue:
+            return self.queue[key]['v']
+
+        else:
+            return None
+
+    def start(self):
+        site = server.Site(RQSResource(self.config, self))
+
+        if self.ssl_cert and self.ssl_key:
+            if SSL:
+                reactor.listenSSL(self.port, site,
+                    ssl.DefaultOpenSSLContextFactory(self.ssl_key,
+                        self.ssl_cert))
+            else:
+                raise Exception("Unable to start SSL API service, no OpenSSL")
+
+        else:
+            reactor.listenTCP(self.port, site)
+
 class Backend(RhumbaBackend):
     """
     Rhumba redis backend
     """
-    def __init__(self, config):
+    def __init__(self, config, parent):
         self.config = config
         self.zk_url = self.config.get('zk_url', '127.0.0.1:2181')
+
+        self.parent = parent
+
+        if self.config.get('rqs', True):
+            self.queueService = RhumbaQueueService(config, self,
+                parent.hostname)
 
         self.client = None
 
     @defer.inlineCallbacks
     def connect(self):
-        client = ZookeeperClient(self.zk_url, 3000)
+        client = ZookeeperClient(self.zk_url, 60)
         log.msg('Connecting to %s' % self.zk_url)
 
         self.client = yield client.connect()
+
+        if self.config.get('rqs', True):
+            yield self.queueService.start()
+
+        else:
+            self.t = task.LoopingCall(self.expireResults)
+            self.t.start(5.0)
 
         yield self.setupPaths()
 
@@ -39,7 +172,45 @@ class Backend(RhumbaBackend):
             yield self._try_create_node(path)
 
     @defer.inlineCallbacks
+    def cleanNodes(self, path):
+        try:
+            it = yield self.client.get_children(path)
+        except:
+            it = []
+
+        for i in it:
+            yield self.cleanNodes(path + '/'+i)
+
+        try:
+            yield self.client.delete(path)
+        except:
+            pass
+
+    @defer.inlineCallbacks
+    def expireResults(self):
+        queues = yield self.keys('/qr')
+        for queue in queues:
+            results = yield self.keys('/qr/%s' % queue)
+
+            for result in results:
+                path = '/rhumba/qr/%s/%s' % (queue, result)
+                r = yield self.client.get(path)
+                if r[0]:
+                    dt = json.loads(r[0]).get('time')
+                    delta = time.time() - dt
+                    if delta > 60:
+                        log.msg('Purging result %s/%s' % (queue, result))
+                        yield self.client.delete(path)
+                else:
+                    log.msg('Purging result %s/%s' % (queue, result))
+                    yield self.client.delete(path)
+
+    @defer.inlineCallbacks
     def _try_create_node(self, path, recursive=True, *a, **kw):
+        node = yield self.client.exists('/rhumba' + path)
+
+        if node:
+            defer.returnValue(None)
 
         if recursive:
             try:
@@ -51,14 +222,18 @@ class Backend(RhumbaBackend):
             rpath = '/rhumba'
             for node in nodes:
                 rpath = '/'.join([rpath, node])
-                try:
-                    if rpath == '/rhumba'+path:
-                        yield self.client.create(rpath, *a, **kw)
-                    else:
-                        yield self.client.create(rpath)
+                node = yield self.client.exists(rpath)
 
-                except zookeeper.NodeExistsException:
-                    pass
+                if not node:
+                    try:
+                        if rpath == '/rhumba'+path:
+                            print "Create", rpath, kw
+                            yield self.client.create(rpath, *a, **kw)
+                        else:
+                            yield self.client.create(rpath)
+
+                    except zookeeper.NodeExistsException:
+                        pass
         else:
             try:
                 yield self.client.create('/rhumba'+path, *a, **kw)
@@ -220,14 +395,14 @@ class Backend(RhumbaBackend):
 
     def setLastCronRun(self, queue, fn, now):
         return self._set_key('/crons/%s/%s' % (queue, fn),
-            str(now))
+            str(now), flags=zookeeper.EPHEMERAL)
 
     def registerCron(self, queue, uuid):
         return self._set_key('/crons/%s' % queue, uuid,
             flags=zookeeper.EPHEMERAL)
 
     def deregisterCron(self, queue):
-        return self.client.delete('/rhumba/crons/%s' % queue)
+        return self.cleanNodes('/rhumba/crons/%s' % queue)
 
     @defer.inlineCallbacks
     def checkCron(self, queue):
@@ -287,7 +462,8 @@ class Backend(RhumbaBackend):
         for server in servers:
             beat = yield self._get_key('/server/%s/heartbeat' % server)
             if beat:
-                snames.append(server)
+                if time.time() - float(beat) < 10:
+                    snames.append(server)
 
         defer.returnValue(snames)
 
