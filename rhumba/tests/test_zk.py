@@ -13,7 +13,7 @@ from rhumba.backends import zk
 from .plugin import sleep
 
 test_config = {
-    'rqs': False,
+    'noexpire': True,
     'backend': 'rhumba.backends.zk',
     'queues': [{
         'id': 0, 'max_jobs': 1,
@@ -35,6 +35,7 @@ class Test(unittest.TestCase):
         yield self.service.client.cleanNodes('/rhumba/q')
         yield self.service.client.cleanNodes('/rhumba/dq')
         yield self.service.client.cleanNodes('/rhumba/crons')
+        yield self.service.client.cleanNodes('/rhumba/croner')
 
         yield self.service.client.setupPaths()
         self.service.setupQueues()

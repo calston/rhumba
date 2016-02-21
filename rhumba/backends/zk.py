@@ -34,9 +34,10 @@ class Backend(RhumbaBackend):
         log.msg('Connecting to %s' % self.zk_url)
 
         self.client = yield client.connect()
-
-        self.t = task.LoopingCall(self.expireResults)
-        self.t.start(5.0)
+        
+        if not self.config.get('noexpire', False):
+            self.t = task.LoopingCall(self.expireResults)
+            self.t.start(5.0)
 
         yield self.setupPaths()
 

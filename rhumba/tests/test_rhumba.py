@@ -78,7 +78,7 @@ class RhumbaTest(unittest.TestCase):
 
         r = FakeRedis()
 
-        redis_backend = redis.Backend(self.service.config)
+        redis_backend = redis.Backend(self.service.config, self.service)
         redis_backend.client = AsyncWrapper(r)
         self.service.client = redis_backend
 
