@@ -67,8 +67,7 @@ class RQSResource(resource.Resource):
     def setRequest(self, path, request, data):
         path = path.strip('/')
         if path:
-            self.service.set(path, data)
-            return 'Ok'
+            return self.service.set(path, data)
 
         return None
 
@@ -79,11 +78,30 @@ class RQSResource(resource.Resource):
         request.finish()
 
 class RQSClient(HTTPRequest):
-    def __init__(self, hostname, port, ssl=False):
+    def __init__(self, hostname, port=7702, ssl=False):
         if ssl:
             self.url = 'https://%s:%s/' % (hostname, port)
         else:
             self.url = 'http://%s:%s/' % (hostname, port)
+
+    @defer.inlineCallbacks
+    def get(self, key):
+        if not 'Content-Type' in headers:
+            headers['Content-Type'] = ['application/json']
+
+        body = yield self.getBody(self.url + key, headers=headers, timeout=5)
+
+        defer.returnValue(json.loads(body))
+
+    @defer.inlineCallbacks
+    def set(self, key, value):
+        if not 'Content-Type' in headers:
+            headers['Content-Type'] = ['application/json']
+
+        body = yield self.getBody(self.url + key, method='POST', data=value,
+            headers=headers, timeout=5)
+
+        defer.returnValue(json.loads(body))
 
 class RhumbaQueueService(object):
     def __init__(self, config, backend, hostname):
@@ -104,13 +122,26 @@ class RhumbaQueueService(object):
     @defer.inlineCallbacks
     def getNeighbours(self):
         servers = yield self.backend.getClusterServers()
+        defer.returnValue([i for i in servers if i != self.hostname])
 
+    @defer.inlineCallbacks
+    def updateNeighbours(self, key, value):
+        servers = yield self.getNeighbours()
+        print servers
+
+        for s in servers:
+            cl = RQSClient(s)
+            cl.set(key, value)
+
+    @defer.inlineCallbacks
     def set(self, key, value, expire=3600):
         self.queue[key] = {
             'v': value,
             'c': time.time(),
             'e': time.time() + expire
         }
+
+
 
     def get(self, key):
         if key in self.queue:
@@ -151,7 +182,7 @@ class Backend(RhumbaBackend):
 
     @defer.inlineCallbacks
     def connect(self):
-        client = ZookeeperClient(self.zk_url, 60)
+        client = ZookeeperClient(self.zk_url, 5000)
         log.msg('Connecting to %s' % self.zk_url)
 
         self.client = yield client.connect()
