@@ -122,6 +122,9 @@ class Backend(RhumbaBackend):
         return self.client.set("rhumba.server.%s.status" % hostname,
             status, expire=expire)
 
+    def getStatus(self, hostname):
+        return self.client.get("rhumba.server.%s.status" % hostname)
+
     def setResult(self, queue, uid, result, expire=None, serverid=None):
         if serverid:
             return self.client.set(

@@ -29,6 +29,11 @@ class Backend(RhumbaBackend):
         log.msg('Connecting to %s' % self.zk_url)
 
         self.client = yield client.connect()
+
+        yield self.setupPaths()
+
+    @defer.inlineCallbacks
+    def setupPaths(self):
         paths = ['/dq', '/q', '/dqr', '/qr', '/server', '/crons', '/qstats']
         for path in paths:
             yield self._try_create_node(path)
@@ -80,8 +85,8 @@ class Backend(RhumbaBackend):
         defer.returnValue(item[0])
 
     @defer.inlineCallbacks
-    def _set_key(self, path, value):
-        yield self._try_create_node(path)
+    def _set_key(self, path, value, **kw):
+        yield self._try_create_node(path, **kw)
         item = yield self.client.set('/rhumba'+path, value)
 
     @defer.inlineCallbacks
@@ -135,8 +140,8 @@ class Backend(RhumbaBackend):
     @defer.inlineCallbacks
     def popDirectQueue(self, uid, queue):
         path = '/dq/%s/%s' % (uid, queue)
-        yield self._try_create_node(path)
-        item = yield Queue(path, self.client).get()
+
+        item = yield self._get_queue(path)
 
         if item:
             defer.returnValue(json.loads(item))
@@ -180,20 +185,23 @@ class Backend(RhumbaBackend):
         return d
 
     def setUUID(self, hostname, uuid, expire=None):
-        return self._try_create_node('/server/%s/uuid' % hostname, data=uuid,
+        return self._set_key('/server/%s/uuid' % hostname, uuid,
             flags=zookeeper.EPHEMERAL)
 
     def setHeartbeat(self, hostname, time, expire=None):
-        return self._try_create_node('/server/%s/heartbeat' % hostname,
-            data=str(time), flags=zookeeper.EPHEMERAL)
+        return self._set_key('/server/%s/heartbeat' % hostname, str(time),
+            flags=zookeeper.EPHEMERAL)
 
     def setQueues(self, hostname, jsond, expire=None):
-        return self._try_create_node('/server/%s/queues' % hostname,
-            data=jsond, flags=zookeeper.EPHEMERAL)
+        return self._set_key('/server/%s/queues' % hostname, jsond,
+            flags=zookeeper.EPHEMERAL)
 
     def setStatus(self, hostname, status, expire=None):
-        return self._try_create_node('/server/%s/status' % hostname,
-            data=status, flags=zookeeper.EPHEMERAL)
+        return self._set_key('/server/%s/status' % hostname,
+            status, flags=zookeeper.EPHEMERAL)
+
+    def getStatus(self, hostname):
+        return self._get_key('/server/%s/status' % hostname)
 
     def setResult(self, queue, uid, result, expire=None, serverid=None):
         if serverid:
@@ -205,17 +213,18 @@ class Backend(RhumbaBackend):
     @defer.inlineCallbacks
     def getCron(self, queue, fn):
         path = '/crons/%s/%s' % (queue, fn)
-        yield self._try_create_node(path)
-        item = yield self.client.get(path)
+
+        item = yield self._get_key(path)
 
         defer.returnValue(item)
 
     def setLastCronRun(self, queue, fn, now):
-        return self._try_create_node('/crons/%s/%s' % (queue, fn),
-            data=str(now))
+        return self._set_key('/crons/%s/%s' % (queue, fn),
+            str(now))
 
     def registerCron(self, queue, uuid):
-        return self._try_create_node('/crons/%s' % queue, data=uuid)
+        return self._set_key('/crons/%s' % queue, uuid,
+            flags=zookeeper.EPHEMERAL)
 
     def deregisterCron(self, queue):
         return self.client.delete('/rhumba/crons/%s' % queue)
@@ -223,16 +232,17 @@ class Backend(RhumbaBackend):
     @defer.inlineCallbacks
     def checkCron(self, queue):
         path = '/crons/%s' % queue
-        yield self._try_create_node(path)
-        item = yield self.client.get(path)
+        item = yield self._get_key(path)
 
         defer.returnValue(item)
 
-    def keys(self, pattern):
-        return self.client.keys(pattern)
+    def keys(self, path):
+        return self.client.get_children('/rhumba'+path)
 
+    @defer.inlineCallbacks
     def queueSize(self, queue):
-        return self.client.llen("rhumba.q.%s" % queue)
+        items = yield self.client.get_children("/rhumba/q/%s" % queue)
+        defer.returnValue(len(items))
     
     def delete(self, key):
         return self.client.delete(key)
@@ -246,31 +256,39 @@ class Backend(RhumbaBackend):
 
     @defer.inlineCallbacks
     def getQueueMessageStats(self, queue):
-        keys = yield self.client.keys('rhumba.qstats.%s.*' % queue)
+        keys = yield self.keys('/qstats/%s' % queue)
+
         msgstats = {}
-        for key in keys:
-            msg = key.split('.')[3]
-            stat = key.split('.')[4]
-            val = yield self.get(key)
+        for msg in keys:
+            stats = yield self.keys('/qstats/%s/%s' % (queue, msg))
 
-            if stat == 'time':
-                val = int(val)/100.0
-            else:
-                val = int(val)
+            for stat in stats:
+                val = yield self._get_key(
+                    '/qstats/%s/%s/%s' % (queue, msg, stat))
 
-            if msg in msgstats:
-                msgstats[msg][stat] = val
-            else:
-                msgstats[msg] = {stat: val}
+                if val:
+                    if stat == 'time':
+                        val = int(val)/100.0
+                    else:
+                        val = int(val)
+
+                    if msg in msgstats:
+                        msgstats[msg][stat] = val
+                    else:
+                        msgstats[msg] = {stat: val}
 
         defer.returnValue(msgstats)
 
     @defer.inlineCallbacks
     def getClusterServers(self):
-        servers = yield self.keys('rhumba\.server\.*\.heartbeat')
-
-        snames = [s.split('.', 2)[-1].rsplit('.', 1)[0] for s in servers]
+        servers = yield self.keys('/server')
         
+        snames = []
+        for server in servers:
+            beat = yield self._get_key('/server/%s/heartbeat' % server)
+            if beat:
+                snames.append(server)
+
         defer.returnValue(snames)
 
     @defer.inlineCallbacks
@@ -282,8 +300,8 @@ class Backend(RhumbaBackend):
         queues = {}
 
         for sname in servers:
-            qs = yield self.get('rhumba.server.%s.queues' % sname)
-            uuid = yield self.get('rhumba.server.%s.uuid' % sname)
+            qs = yield self._get_key('/server/%s/queues' % sname)
+            uuid = yield self._get_key('/server/%s/uuid' % sname)
        
             qs = json.loads(qs)
 
@@ -313,9 +331,9 @@ class Backend(RhumbaBackend):
         reverse_map = {}
 
         for sname in servers:
-            last = yield self.get('rhumba.server.%s.heartbeat' % sname)
-            status = yield self.get('rhumba.server.%s.status' % sname)
-            uuid = yield self.get('rhumba.server.%s.uuid' % sname)
+            last = yield self._get_key('/server/%s/heartbeat' % sname)
+            status = yield self._get_key('/server/%s/status' % sname)
+            uuid = yield self._get_key('/server/%s/uuid' % sname)
 
             reverse_map[uuid] = sname
 
@@ -337,27 +355,27 @@ class Backend(RhumbaBackend):
             })
 
         # Crons
-        crons = yield self.keys('rhumba\.crons\.*')
+        crons = yield self.keys('/crons')
 
-        for key in crons:
-            segments = key.split('.')
-
-            queue = segments[2]
+        for queue in crons:
             if queue not in d['crons']:
                 d['crons'][queue] = {'methods': {}}
 
-            if len(segments)==4:
-                last = yield self.get(key)
-                d['crons'][queue]['methods'][segments[3]] = float(last)
-            else:
-                uid = yield self.get(key)
+            methods = yield self.keys('/crons/%s' % queue)
+
+            for method in methods:
+                last = yield self._get_key('/crons/%s/%s' % (queue, method))
+                if last:
+                    d['crons'][queue]['methods'][method] = float(last)
+            
+            uid = yield self._get_key('/crons/%s' % queue)
+            if uid:
                 d['crons'][queue]['master'] = '%s:%s' % (uid, reverse_map[uid])
 
         # Queues
-        queue_keys = yield self.keys('rhumba.qstats.*')
+        queue_keys = yield self.keys('/qstats')
 
-        for key in queue_keys:
-            qname = key.split('.')[2]
+        for qname in queue_keys:
             if qname not in d['queues']:
                 qlen = yield self.queueSize(qname)
 

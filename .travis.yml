@@ -1,8 +1,24 @@
 language: python
 python:
-  - 2.7
+    - 2.7
+
+before_install:
+    - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF
+    - echo "deb http://repos.mesosphere.com/$(lsb_release -is | tr '[:upper:]' '[:lower:]') $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
+    - sudo apt-get -y update
+    - sudo apt-get install -y zookeeper-server
+
+before_script:
+    - "sudo service zookeeper-server init"
+    - "sudo service zookeeper-server start"
+
+after_script:
+  - "sudo service zookeeper-server stop"
+
 install:
     - pip install .
+    - pip install txzookeeper
+    - pip install zc-zookeeper-static
 services:
     - redis-server
 script:

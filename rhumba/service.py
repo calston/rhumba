@@ -59,7 +59,6 @@ class RhumbaService(service.Service):
     def checkCrons(self, now):
         for queue, crons in self.crons.items():
             runner = yield self.checkCronRunners(queue)
-
             if not runner:
                 yield self.registerCronRunner(queue)
                 runner = self.uuid
@@ -91,6 +90,9 @@ class RhumbaService(service.Service):
         
     def setStatus(self, status):
         return self.client.setStatus(self.hostname, status, expire=self.expire)
+
+    def getStatus(self):
+        return self.client.getStatus(self.hostname)
 
     def startBeat(self):
         self.td = self.t.start(1.0)

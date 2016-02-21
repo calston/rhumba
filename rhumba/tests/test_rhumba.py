@@ -102,7 +102,7 @@ class TestService(RhumbaTest):
         client = TestClient(rc)
 
         yield client.queue('testqueue', 'test')
-        
+
         message = rc.c.kv['rhumba.q.testqueue'][0]
 
         self.assertIn('test', message)
@@ -110,8 +110,6 @@ class TestService(RhumbaTest):
     @defer.inlineCallbacks
     def test_heartbeat(self):
         yield self.service.heartbeat()
-
-        print self.client.kv
 
         hb = self.client.kv.get("rhumba.server.%s.heartbeat" % self.service.hostname)
 
@@ -121,8 +119,9 @@ class TestService(RhumbaTest):
     def test_status(self):
         yield self.service.setStatus('test')
 
-        hb = self.client.kv.get("rhumba.server.%s.status" % self.service.hostname)
-        self.assertEquals(hb, 'test')
+        st = yield self.service.getStatus()
+
+        self.assertEquals(st, 'test')
 
     def test_queues(self):
         self.assertTrue('testqueue' in self.service.queues)
