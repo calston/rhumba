@@ -66,8 +66,13 @@ class RQSResource(resource.Resource):
 
     def setRequest(self, path, request, data):
         path = path.strip('/')
+        
+        propagate = request.args.get('propagate', [True])[0]
+        expire = int(request.args.get('expire', [3600])[0])
+
         if path:
-            return self.service.set(path, data)
+            return self.service.set(path, data,
+                propagate=propagate, expire=expire)
 
         return None
 
@@ -86,20 +91,23 @@ class RQSClient(HTTPRequest):
 
     @defer.inlineCallbacks
     def get(self, key):
-        if not 'Content-Type' in headers:
-            headers['Content-Type'] = ['application/json']
+        headers = {'Content-Type': ['application/json']}
 
-        body = yield self.getBody(self.url + key, headers=headers, timeout=5)
+        body = yield self.request(self.url + key, headers=headers, timeout=5)
 
         defer.returnValue(json.loads(body))
 
     @defer.inlineCallbacks
-    def set(self, key, value):
-        if not 'Content-Type' in headers:
-            headers['Content-Type'] = ['application/json']
+    def set(self, key, value, **kw):
+        headers = {'Content-Type': ['application/json']}
 
-        body = yield self.getBody(self.url + key, method='POST', data=value,
-            headers=headers, timeout=5)
+        if kw:
+            opts = '?' + '&'.join(['%s=%s' % (k,v) for k,v in kw.items()])
+        else:
+            opts = ''
+
+        body = yield self.request(self.url + key + opts, method='POST',
+            data=value, headers=headers, timeout=5)
 
         defer.returnValue(json.loads(body))
 
@@ -125,23 +133,22 @@ class RhumbaQueueService(object):
         defer.returnValue([i for i in servers if i != self.hostname])
 
     @defer.inlineCallbacks
-    def updateNeighbours(self, key, value):
+    def updateNeighbours(self, key, value, expire=3600):
         servers = yield self.getNeighbours()
         print servers
 
         for s in servers:
             cl = RQSClient(s)
-            cl.set(key, value)
+            yield cl.set(key, value, expire=expire)
 
-    @defer.inlineCallbacks
-    def set(self, key, value, expire=3600):
+    def set(self, key, value, expire=3600, propagate=True):
         self.queue[key] = {
             'v': value,
             'c': time.time(),
             'e': time.time() + expire
         }
-
-
+        if propagate:
+            reactor.callLater(0, self.updateNeighbours, key, value, expire)
 
     def get(self, key):
         if key in self.queue:
