@@ -18,7 +18,7 @@ import zookeeper
 
 class Backend(RhumbaBackend):
     """
-    Rhumba redis backend
+    Rhumba zookeeper backend
     """
     def __init__(self, config, parent):
         self.config = config
