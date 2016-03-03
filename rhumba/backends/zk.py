@@ -1,3 +1,5 @@
+# XXX Do not use this yet, txzookeeper is extremely unstable
+
 import redis
 import time
 import json
