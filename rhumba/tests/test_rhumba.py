@@ -78,7 +78,7 @@ class RhumbaTest(unittest.TestCase):
 
         r = FakeRedis()
 
-        redis_backend = redis.Backend(self.service.config)
+        redis_backend = redis.Backend(self.service.config, self.service)
         redis_backend.client = AsyncWrapper(r)
         self.service.client = redis_backend
 
@@ -102,7 +102,7 @@ class TestService(RhumbaTest):
         client = TestClient(rc)
 
         yield client.queue('testqueue', 'test')
-        
+
         message = rc.c.kv['rhumba.q.testqueue'][0]
 
         self.assertIn('test', message)
@@ -119,8 +119,9 @@ class TestService(RhumbaTest):
     def test_status(self):
         yield self.service.setStatus('test')
 
-        hb = self.client.kv.get("rhumba.server.%s.status" % self.service.hostname)
-        self.assertEquals(hb, 'test')
+        st = yield self.service.getStatus()
+
+        self.assertEquals(st, 'test')
 
     def test_queues(self):
         self.assertTrue('testqueue' in self.service.queues)
@@ -144,7 +145,6 @@ class TestService(RhumbaTest):
 
         uuid1 = self.c.queue('testqueue', 'test', {'count': 1, 'delay': 2})
         uuid2 = self.c.queue('testqueue', 'test', {'count': 2, 'delay': 1})
-
 
         reactor.callLater(0, queue.queueRun)
         reactor.callLater(1, queue.queueRun)

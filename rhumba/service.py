@@ -59,7 +59,6 @@ class RhumbaService(service.Service):
     def checkCrons(self, now):
         for queue, crons in self.crons.items():
             runner = yield self.checkCronRunners(queue)
-
             if not runner:
                 yield self.registerCronRunner(queue)
                 runner = self.uuid
@@ -80,37 +79,39 @@ class RhumbaService(service.Service):
     def heartbeat(self):
         yield self.checkCrons(datetime.datetime.now())
 
-        yield self.client.set("rhumba.server.%s.uuid" % self.hostname,
-            self.uuid, expire=self.expire)
+        yield self.client.setUUID(self.hostname, self.uuid,
+            expire=self.expire)
 
-        yield self.client.set("rhumba.server.%s.heartbeat" % self.hostname,
-            time.time(), expire=self.expire)
+        yield self.client.setHeartbeat(self.hostname, time.time(),
+            expire=self.expire)
 
-        yield self.client.set("rhumba.server.%s.queues" % self.hostname,
+        yield self.client.setQueues(self.hostname,
             json.dumps(self.queues.keys()), expire=self.expire)
-
+        
     def setStatus(self, status):
-        return self.client.set("rhumba.server.%s.status" % self.hostname,
-            status, expire=self.expire)
+        return self.client.setStatus(self.hostname, status, expire=self.expire)
+
+    def getStatus(self):
+        return self.client.getStatus(self.hostname)
 
     def startBeat(self):
         self.td = self.t.start(1.0)
 
     def lastRun(self, queue, fn):
-        return self.client.get("rhumba.crons.%s.%s" % (queue, fn))
+        return self.client.getCron(queue, fn)
 
     def setLastRun(self, queue, fn, now):
         now = time.mktime(now.timetuple())
-        return self.client.set("rhumba.crons.%s.%s" % (queue, fn), now)
+        return self.client.setLastCronRun(queue, fn, now)
 
     def registerCronRunner(self, queue):
-        return self.client.set("rhumba.crons.%s" % queue, self.uuid, expire=60)
+        return self.client.registerCron(queue, self.uuid)
 
     def deregisterCronRunner(self, queue):
-        return self.client.delete("rhumba.crons.%s" % queue)
+        return self.client.deregisterCron(queue)
 
     def checkCronRunners(self, queue):
-        return self.client.get("rhumba.crons.%s" % queue)
+        return self.client.checkCron(queue)
 
     def setupQueues(self):
         queues = self.config.get('queues', [])
@@ -138,11 +139,13 @@ class RhumbaService(service.Service):
                 log.msg('Deregistering queue %s' % queue)
                 yield self.deregisterCronRunner(queue)
 
+        yield self.client.close()
+
     @defer.inlineCallbacks
     def startBackend(self):
         try:
             self.client = getattr(importlib.import_module(
-                self.backend), 'Backend')(self.config)
+                self.backend), 'Backend')(self.config, self)
             yield self.client.connect()
 
         except exceptions.ImportError, e:
